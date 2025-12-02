@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Permit Statistics Table</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 900px;
+      margin: 40px auto;
+      padding: 0 10px;
+      background-color: #f5f5f5;
+    }
+    h1 {
+      text-align: center;
+    }
+    .card {
+      background: #ffffff;
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
+    }
+    label {
+      display: block;
+      margin-top: 10px;
+      font-weight: bold;
+    }
+    input {
+      padding: 6px;
+      box-sizing: border-box;
+      margin-top: 4px;
+      width: 100%;
+    }
+    .choice-row {
+      display: grid;
+      grid-template-columns: 1.2fr 1.2fr 0.8fr;
+      gap: 10px;
+      margin-top: 8px;
+      align-items: end;
+    }
+    .choice-title {
+      margin-top: 16px;
+      font-weight: bold;
+    }
+    button {
+      margin-top: 18px;
+      padding: 10px 18px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    #error {
+      color: #b00020;
+      margin-top: 8px;
+      font-size: 13px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+      background: #fff;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      text-align: center;
+    }
+    th {
+      background-color: #f0f0f0;
+    }
+    .no-data {
+      color: #888;
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+  <h1>Permit Statistics (Table View)</h1>
+
+  <div class="card">
+    <p>
+      Enter up to <strong>three</strong> choices.
+      Each choice has its own zone, date, and group size.
+      The table will show estimated odds for each choice across the years
+      <strong>2020–2024</strong>, along with the comparable date used in each year.
+    </p>
+
+    <form id="stats-form">
+      <!-- Choice 1 -->
+      <div class="choice-title">Choice 1</div>
+      <div class="choice-row">
+        <div>
+          <label>Zone 1:
+            <input type="text" id="zone1" placeholder="e.g., Core" />
+          </label>
+        </div>
+        <div>
+          <label>Date 1:
+            <input type="date" id="date1" />
+          </label>
+        </div>
+        <div>
+          <label>Group Size 1:
+            <input type="number" id="group_size1" min="1" />
+          </label>
+        </div>
+      </div>
+
+      <!-- Choice 2 -->
+      <div class="choice-title">Choice 2</div>
+      <div class="choice-row">
+        <div>
+          <label>Zone 2:
+            <input type="text" id="zone2" placeholder="e.g., Colchuck" />
+          </label>
+        </div>
+        <div>
+          <label>Date 2:
+            <input type="date" id="date2" />
+          </label>
+        </div>
+        <div>
+          <label>Group Size 2:
+            <input type="number" id="group_size2" min="1" />
+          </label>
+        </div>
+      </div>
+
+      <!-- Choice 3 -->
+      <div class="choice-title">Choice 3</div>
+      <div class="choice-row">
+        <div>
+          <label>Zone 3:
+            <input type="text" id="zone3" placeholder="e.g., Snow" />
+          </label>
+        </div>
+        <div>
+          <label>Date 3:
+            <input type="date" id="date3" />
+          </label>
+        </div>
+        <div>
+          <label>Group Size 3:
+            <input type="number" id="group_size3" min="1" />
+          </label>
+        </div>
+      </div>
+
+      <button type="submit" id="submit-button">Get Table</button>
+      <div id="error"></div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Results</h2>
+    <div id="table-container">
+      <!-- Table will be inserted here -->
+    </div>
+  </div>
+
+  <script>
+    const API_BASE_URL = 'http://localhost:8000';
+
+    // Convert "YYYY-MM-DD" (from the form) to "Mmm dd"
+    function formatIsoDateToMmmDd(isoDate) {
+      if (!isoDate) return '';
+      const [yearStr, monthStr, dayStr] = isoDate.split('-');
+      const month = parseInt(monthStr, 10);
+      const day = parseInt(dayStr, 10);
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return months[month - 1] + ' ' + day.toString();
+    }
+
+    // Convert "MM-DD-YYYY" (from backend comparable date) to "Mmm dd"
+    function formatMmDdYyyyToMmmDd(mdY) {
+      if (!mdY) return '';
+      const [monthStr, dayStr, yearStr] = mdY.split('-');
+      const month = parseInt(monthStr, 10);
+      const day = parseInt(dayStr, 10);
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return months[month - 1] + ' ' + day.toString();
+    }
+
+    const form = document.getElementById('stats-form');
+    const errorDiv = document.getElementById('error');
+    const tableContainer = document.getElementById('table-container');
+    const submitButton = document.getElementById('submit-button');
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+
+      errorDiv.textContent = '';
+      tableContainer.innerHTML = 'Building table...';
+
+      // Collect all choices from the form
+      const choices = [
+        {
+          label: 'Choice 1',
+          zone: document.getElementById('zone1').value.trim(),
+          date: document.getElementById('date1').value,
+          groupSizeValue: document.getElementById('group_size1').value
+        },
+        {
+          label: 'Choice 2',
+          zone: document.getElementById('zone2').value.trim(),
+          date: document.getElementById('date2').value,
+          groupSizeValue: document.getElementById('group_size2').value
+        },
+        {
+          label: 'Choice 3',
+          zone: document.getElementById('zone3').value.trim(),
+          date: document.getElementById('date3').value,
+          groupSizeValue: document.getElementById('group_size3').value
+        }
+      ];
+
+      // Keep only rows where zone AND date are filled
+      const filledChoices = choices.filter(
+        (c) => c.zone !== '' && c.date !== ''
+      );
+
+      if (filledChoices.length === 0) {
+        errorDiv.textContent = 'Please fill in at least one zone/date choice with a group size.';
+        tableContainer.innerHTML = '';
+        return;
+      }
+
+      // Validate group size for each filled choice
+      for (const c of filledChoices) {
+        const size = parseInt(c.groupSizeValue, 10);
+        if (!c.groupSizeValue || isNaN(size) || size < 1) {
+          errorDiv.textContent = `Please enter a valid group size (at least 1) for ${c.label}.`;
+          tableContainer.innerHTML = '';
+          return;
+        }
+        c.groupSize = size;
+      }
+
+      // Use the year from the first filled choice's date as the permit year
+      const [permitYearStr] = filledChoices[0].date.split('-');
+      const permitYear = parseInt(permitYearStr, 10);
+
+      // Historical years used by your databases
+      const dataYears = [2020, 2021, 2022, 2023, 2024];
+
+      // Prepare payload choices (only filled ones)
+      const apiChoices = filledChoices.map((c) => {
+        const [yearStr, monthStr, dayStr] = c.date.split('-');
+        return {
+          zone: c.zone,
+          month: parseInt(monthStr, 10),
+          day: parseInt(dayStr, 10),
+          group_size: c.groupSize
+        };
+      });
+
+      submitButton.disabled = true;
+      submitButton.textContent = 'Loading...';
+
+      try {
+        const response = await fetch(API_BASE_URL + '/estimate_odds', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            permit_year: permitYear,
+            data_years: dataYears,
+            choices: apiChoices
+          })
+        });
+
+        if (!response.ok) {
+          errorDiv.textContent = 'Error from server: ' + response.status + ' ' + response.statusText;
+          tableContainer.innerHTML = '';
+          return;
+        }
+
+        const data = await response.json();
+
+        const years = data.years || [];
+        const resultChoices = data.choices || [];
+
+        // Build table
+        const table = document.createElement('table');
+
+        // Header row
+        const thead = document.createElement('thead');
+        const headerRow = document.createElement('tr');
+        const firstHeader = document.createElement('th');
+        firstHeader.textContent = 'Zone / Date / Group Size';
+        headerRow.appendChild(firstHeader);
+
+        years.forEach((year) => {
+          const th = document.createElement('th');
+          th.textContent = year.toString();
+          headerRow.appendChild(th);
+        });
+
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+
+        const tbody = document.createElement('tbody');
+
+        // For each filled choice, add a row
+        filledChoices.forEach((c, index) => {
+          const backendChoice = resultChoices[index];
+
+          const row = document.createElement('tr');
+
+          const labelCell = document.createElement('td');
+          const prettyPermitDate = formatIsoDateToMmmDd(c.date);
+          labelCell.textContent =
+            `${c.label}: ${c.zone} (${prettyPermitDate}), group size ${c.groupSize}`;
+          row.appendChild(labelCell);
+
+          years.forEach((year) => {
+            const cell = document.createElement('td');
+
+            if (!backendChoice) {
+              cell.textContent = 'N/A';
+              cell.className = 'no-data';
+              row.appendChild(cell);
+              return;
+            }
+
+            const oddsByYear = backendChoice.odds_by_year || {};
+            const compDatesByYear = backendChoice.comp_dates_by_year || {};
+
+            const value = oddsByYear[year];
+            const compDate = compDatesByYear[year];
+
+            if (value === null || value === undefined) {
+              cell.textContent = '';
+            } else {
+              const prettyCompDate = compDate ? formatMmDdYyyyToMmmDd(compDate) : '';
+
+              if (prettyCompDate) {
+                cell.innerHTML =
+                  (value * 100).toFixed(1) + '%' +
+                  '<br><span style="font-size: 0.9em; color: #666;">' +
+                  prettyCompDate +
+                  '</span>';
+              } else {
+                cell.textContent = (value * 100).toFixed(1) + '%';
+              }
+            }
+
+            row.appendChild(cell);
+          });
+
+          tbody.appendChild(row);
+        });
+
+        table.appendChild(tbody);
+        tableContainer.innerHTML = '';
+        tableContainer.appendChild(table);
+
+      } catch (err) {
+        console.error(err);
+        errorDiv.textContent = 'Something went wrong while contacting the server.';
+        tableContainer.innerHTML = '';
+      } finally {
+        submitButton.disabled = false;
+        submitButton.textContent = 'Get Table';
+      }
+    });
+  </script>
+</body>
+</html>
