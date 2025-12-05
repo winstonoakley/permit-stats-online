@@ -1,5 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, HTMLResponse
+import os
 from pydantic import BaseModel
 from datetime import date
 import sqlite3
@@ -7,7 +9,6 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List
 from .odds_engine import Choice, estimate_odds_for_choice_set
-import os
 
 
 app = FastAPI()
@@ -23,6 +24,13 @@ app.add_middleware(
 
 DB_PATH = Path("stats.db")
 
+# Path to the repo root (where index.html lives)
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+INDEX_PATH = os.path.join(BASE_DIR, "index.html")
+
+@app.get("/", response_class=HTMLResponse)
+async def serve_index():
+    return FileResponse(INDEX_PATH)
 
 # --- Models (shapes of data we send/receive) ---
 
@@ -158,3 +166,4 @@ def estimate_odds(payload: OddsRequest):
     )
 
     return OddsResponse(**result)
+
