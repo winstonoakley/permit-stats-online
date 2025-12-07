@@ -108,7 +108,7 @@
         </div>
         <div>
           <label>Date 1:
-            <input type="date" id="date1" />
+            <input type="date" id="date1" min="2026-05-15" max="2026-10-31" />
           </label>
         </div>
         <div>
@@ -145,7 +145,7 @@
         </div>
         <div>
           <label>Date 2:
-            <input type="date" id="date2" />
+            <input type="date" id="date2" min="2026-05-15" max="2026-10-31" />
           </label>
         </div>
         <div>
@@ -182,7 +182,7 @@
         </div>
         <div>
           <label>Date 3:
-            <input type="date" id="date3" />
+            <input type="date" id="date3" min="2026-05-15" max="2026-10-31" />
           </label>
         </div>
         <div>
@@ -282,6 +282,20 @@
         tableContainer.innerHTML = '';
         return;
       }
+
+      // Extra safety: ensure dates are within the allowed lottery window
+      const minDate = new Date('2026-05-15');
+      const maxDate = new Date('2026-10-31');
+      
+      for (const c of filledChoices) {
+        const d = new Date(c.date);
+        if (isNaN(d.getTime()) || d < minDate || d > maxDate) {
+          errorDiv.textContent = 'Dates must be between May 15 and Oct 31, 2026.';
+          tableContainer.innerHTML = '';
+          return;
+        }
+      }
+
 
       // Validate group size for each filled choice
       for (const c of filledChoices) {
@@ -460,6 +474,7 @@
   </script>
 </body>
 </html>
+
 
 
 
