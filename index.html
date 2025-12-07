@@ -369,7 +369,7 @@
           const labelCell = document.createElement('td');
           const prettyPermitDate = formatIsoDateToMmmDd(c.date);
           labelCell.textContent =
-            `${c.label}: ${c.zone} (${prettyPermitDate}), group size ${c.groupSize}`;
+            `${c.label}: ${c.zone} (${prettyPermitDate}), ${c.groupSize} people`;
           row.appendChild(labelCell);
 
           years.forEach((year) => {
@@ -460,6 +460,7 @@
   </script>
 </body>
 </html>
+
 
 
 
