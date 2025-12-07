@@ -358,6 +358,40 @@
           tbody.appendChild(row);
         });
 
+        // Add a totals row: sum of odds across all choices for each year
+        const totalsRow = document.createElement('tr');
+        
+        // Label cell
+        const totalsLabelCell = document.createElement('td');
+        totalsLabelCell.textContent = 'Total odds of winning any choice';
+        totalsLabelCell.style.fontWeight = 'bold';
+        totalsRow.appendChild(totalsLabelCell);
+        
+        // One cell per year with the summed odds
+        years.forEach((year) => {
+          let total = 0;
+        
+          // Sum odds across all filled choices for this year
+          filledChoices.forEach((c, index) => {
+            const backendChoice = resultChoices[index];
+            if (!backendChoice) return;
+        
+            const oddsByYear = backendChoice.odds_by_year || {};
+            const value = oddsByYear[year];
+        
+            if (value !== null && value !== undefined) {
+              total += value;
+            }
+          });
+        
+          const cell = document.createElement('td');
+          cell.textContent = (total * 100).toFixed(1) + '%';
+          cell.style.fontWeight = 'bold';
+          totalsRow.appendChild(cell);
+        });
+        
+        tbody.appendChild(totalsRow);
+
         table.appendChild(tbody);
         tableContainer.innerHTML = '';
         tableContainer.appendChild(table);
@@ -374,5 +408,6 @@
   </script>
 </body>
 </html>
+
 
 
