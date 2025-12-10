@@ -45,7 +45,7 @@
     h1 {
       margin: 0 0 4px 0;
       font-size: 1.9rem;
-      text-align: left;
+      text-align: center;
       letter-spacing: 0.03em;
     }
     
@@ -53,6 +53,7 @@
       margin: 0 0 24px 0;
       font-size: 0.95rem;
       color: var(--text-muted);
+      text-align: center;
     }
     
     /* Cards */
@@ -256,6 +257,15 @@
       h1 {
         font-size: 1.5rem;
       }
+
+      .card.results-card {
+        text-align: center;
+      }
+      
+      .card.results-card table {
+        margin-left: auto;
+        margin-right: auto;
+      }
     }
   </style>
 </head>
@@ -388,7 +398,7 @@
     </form>
   </div>
 
-  <div class="card">
+  <div class="card results-card">
     <h2>Results</h2>
     <div id="table-container">
       <!-- Table will be inserted here -->
@@ -657,6 +667,7 @@
   </script>
 </body>
 </html>
+
 
 
 
