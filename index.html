@@ -271,140 +271,140 @@
   </style>
 </head>
 <body>
-  <h1>Permit Statistics (Table View)</h1>
+  <div class="main-wrapper">
+    <div class="card">
+      <h1>Permit Statistics (Table View)</h1>
+      <p class="subtitle">
+        Enter up to <strong>three</strong> choices. Each choice has its own zone, date, and group size.
+        The table will show estimated odds for each choice across the years <strong>2020–2024</strong>,
+        along with the comparable date used in each year.
+      </p>
 
-  <div class="card">
-    <p>
-      Enter up to <strong>three</strong> choices.
-      Each choice has its own zone, date, and group size.
-      The table will show estimated odds for each choice across the years
-      <strong>2020–2024</strong>, along with the comparable date used in each year.
-    </p>
+      <form id="stats-form">
+        <!-- Choice 1 -->
+        <div class="choice-title">Choice 1</div>
+        <div class="choice-row">
+          <div>
+            <label>Zone 1:
+              <select id="zone1">
+                <option value="">-- Select zone --</option>
+                <option value="Core">Core</option>
+                <option value="Colchuck">Colchuck</option>
+                <option value="Snow">Snow</option>
+                <option value="Eightmile">Eightmile</option>
+                <option value="Stuart">Stuart</option>
+                <option value="None">None</option>
+              </select>
+            </label>
+          </div>
+          <div>
+            <label>Date 1:
+              <input type="date" id="date1" min="2026-05-15" max="2026-10-31" />
+            </label>
+          </div>
+          <div>
+            <label>Group Size 1:
+              <select id="group_size1">
+                <option value="">--</option>
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="5">5</option>
+                <option value="6">6</option>
+                <option value="7">7</option>
+                <option value="8">8</option>
+              </select>
+            </label>
+          </div>
+        </div>
 
-    <form id="stats-form">
-      <!-- Choice 1 -->
-      <div class="choice-title">Choice 1</div>
-      <div class="choice-row">
-        <div>
-          <label>Zone 1:
-            <select id="zone1">
-              <option value="">-- Select zone --</option>
-              <option value="Core">Core</option>
-              <option value="Colchuck">Colchuck</option>
-              <option value="Snow">Snow</option>
-              <option value="Eightmile">Eightmile</option>
-              <option value="Stuart">Stuart</option>
-              <option value="None">None</option>
-            </select>
-          </label>
+        <!-- Choice 2 -->
+        <div class="choice-title">Choice 2</div>
+        <div class="choice-row">
+          <div>
+            <label>Zone 2:
+              <select id="zone2">
+                <option value="">-- Select zone --</option>
+                <option value="Core">Core</option>
+                <option value="Colchuck">Colchuck</option>
+                <option value="Snow">Snow</option>
+                <option value="Eightmile">Eightmile</option>
+                <option value="Stuart">Stuart</option>
+                <option value="None">None</option>
+              </select>
+            </label>
+          </div>
+          <div>
+            <label>Date 2:
+              <input type="date" id="date2" min="2026-05-15" max="2026-10-31" />
+            </label>
+          </div>
+          <div>
+            <label>Group Size 2:
+              <select id="group_size2">
+                <option value="">--</option>
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="5">5</option>
+                <option value="6">6</option>
+                <option value="7">7</option>
+                <option value="8">8</option>
+              </select>
+            </label>
+          </div>
         </div>
-        <div>
-          <label>Date 1:
-            <input type="date" id="date1" min="2026-05-15" max="2026-10-31" />
-          </label>
+
+        <!-- Choice 3 -->
+        <div class="choice-title">Choice 3</div>
+        <div class="choice-row">
+          <div>
+            <label>Zone 3:
+              <select id="zone3">
+                <option value="">-- Select zone --</option>
+                <option value="Core">Core</option>
+                <option value="Colchuck">Colchuck</option>
+                <option value="Snow">Snow</option>
+                <option value="Eightmile">Eightmile</option>
+                <option value="Stuart">Stuart</option>
+                <option value="None">None</option>
+              </select>
+            </label>
+          </div>
+          <div>
+            <label>Date 3:
+              <input type="date" id="date3" min="2026-05-15" max="2026-10-31" />
+            </label>
+          </div>
+          <div>
+            <label>Group Size 3:
+              <select id="group_size3">
+                <option value="">--</option>
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="5">5</option>
+                <option value="6">6</option>
+                <option value="7">7</option>
+                <option value="8">8</option>
+              </select>
+            </label>
+          </div>
         </div>
-        <div>
-          <label>Group Size 1:
-            <select id="group_size1">
-              <option value="1">1</option>
-              <option value="2">2</option>
-              <option value="3">3</option>
-              <option value="4">4</option>
-              <option value="5">5</option>
-              <option value="6">6</option>
-              <option value="7">7</option>
-              <option value="8">8</option>
-            </select>
-          </label>
-        </div>
+
+        <button type="submit" id="submit-button">Get Table</button>
+        <div id="error"></div>
+      </form>
+
+      <h2 style="margin-top: 22px;">Results</h2>
+      <div id="table-container">
+        <!-- Table will be inserted here -->
       </div>
-
-      <!-- Choice 2 -->
-      <div class="choice-title">Choice 2</div>
-      <div class="choice-row">
-        <div>
-          <label>Zone 2:
-            <select id="zone2">
-              <option value="">-- Select zone --</option>
-              <option value="Core">Core</option>
-              <option value="Colchuck">Colchuck</option>
-              <option value="Snow">Snow</option>
-              <option value="Eightmile">Eightmile</option>
-              <option value="Stuart">Stuart</option>
-              <option value="None">None</option>
-            </select>
-          </label>
-        </div>
-        <div>
-          <label>Date 2:
-            <input type="date" id="date2" min="2026-05-15" max="2026-10-31" />
-          </label>
-        </div>
-        <div>
-          <label>Group Size 2:
-            <select id="group_size2">
-              <option value="1">1</option>
-              <option value="2">2</option>
-              <option value="3">3</option>
-              <option value="4">4</option>
-              <option value="5">5</option>
-              <option value="6">6</option>
-              <option value="7">7</option>
-              <option value="8">8</option>
-            </select>
-          </label>
-        </div>
-      </div>
-
-      <!-- Choice 3 -->
-      <div class="choice-title">Choice 3</div>
-      <div class="choice-row">
-        <div>
-          <label>Zone 3:
-            <select id="zone3">
-              <option value="">-- Select zone --</option>
-              <option value="Core">Core</option>
-              <option value="Colchuck">Colchuck</option>
-              <option value="Snow">Snow</option>
-              <option value="Eightmile">Eightmile</option>
-              <option value="Stuart">Stuart</option>
-              <option value="None">None</option>
-            </select>
-          </label>
-        </div>
-        <div>
-          <label>Date 3:
-            <input type="date" id="date3" min="2026-05-15" max="2026-10-31" />
-          </label>
-        </div>
-        <div>
-          <label>Group Size 3:
-            <select id="group_size3">
-              <option value="">--</option>
-              <option value="1">1</option>
-              <option value="2">2</option>
-              <option value="3">3</option>
-              <option value="4">4</option>
-              <option value="5">5</option>
-              <option value="6">6</option>
-              <option value="7">7</option>
-              <option value="8">8</option>
-            </select>
-          </label>
-        </div>
-      </div>
-
-      <button type="submit" id="submit-button">Get Table</button>
-      <div id="error"></div>
-    </form>
-  </div>
-
-  <div class="card results-card">
-    <h2>Results</h2>
-    <div id="table-container">
-      <!-- Table will be inserted here -->
-    </div>
-  </div>
+    </div> <!-- end .card -->
+  </div> <!-- end .main-wrapper -->
 
   <script>
     const API_BASE_URL = '';
@@ -668,6 +668,7 @@
   </script>
 </body>
 </html>
+
 
 
 
