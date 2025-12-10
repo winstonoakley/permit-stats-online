@@ -4,77 +4,258 @@
   <meta charset="UTF-8" />
   <title>Permit Statistics Table</title>
   <style>
+    :root {
+      --bg: #0f172a;          /* page background: dark slate */
+      --card-bg: #0b1120;     /* card background: deep navy */
+      --accent: #38bdf8;      /* cyan accent */
+      --accent-soft: rgba(56, 189, 248, 0.12);
+      --accent-strong: #0ea5e9;
+      --text-main: #e5e7eb;   /* light gray text */
+      --text-muted: #9ca3af;  /* muted gray text */
+      --border-subtle: rgba(148, 163, 184, 0.35);
+      --danger: #f97373;
+      --radius-lg: 16px;
+      --shadow-soft: 0 18px 45px rgba(15, 23, 42, 0.7);
+    }
+    
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+    }
+    
     body {
-      font-family: Arial, sans-serif;
-      max-width: 900px;
-      margin: 40px auto;
-      padding: 0 10px;
-      background-color: #f5f5f5;
+      margin: 0;
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: radial-gradient(circle at top, #1e293b 0, #020617 55%);
+      color: var(--text-main);
+      display: flex;
+      justify-content: center;
+      padding: 32px 16px;
     }
+    
+    /* Overall layout container */
+    .main-wrapper {
+      width: 100%;
+      max-width: 1040px;
+    }
+    
+    /* Header */
     h1 {
-      text-align: center;
+      margin: 0 0 4px 0;
+      font-size: 1.9rem;
+      text-align: left;
+      letter-spacing: 0.03em;
     }
+    
+    .subtitle {
+      margin: 0 0 24px 0;
+      font-size: 0.95rem;
+      color: var(--text-muted);
+    }
+    
+    /* Cards */
     .card {
-      background: #ffffff;
-      border-radius: 8px;
-      padding: 20px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      background: radial-gradient(circle at top left, rgba(56, 189, 248, 0.09), transparent 50%),
+                  var(--card-bg);
+      border-radius: var(--radius-lg);
+      padding: 20px 20px 18px 20px;
+      box-shadow: var(--shadow-soft);
+      border: 1px solid rgba(15, 23, 42, 0.9);
       margin-bottom: 20px;
     }
-    label {
-      display: block;
+    
+    /* Form layout */
+    #stats-form {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    
+    .choice-title {
       margin-top: 10px;
-      font-weight: bold;
+      font-size: 0.9rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--accent);
     }
-    input {
-      padding: 6px;
-      box-sizing: border-box;
-      margin-top: 4px;
-      width: 100%;
-    }
+    
     .choice-row {
       display: grid;
-      grid-template-columns: 1.2fr 1.2fr 0.8fr;
+      grid-template-columns: 1.3fr 1.3fr 0.8fr;
       gap: 10px;
-      margin-top: 8px;
-      align-items: end;
+      margin-top: 4px;
     }
-    .choice-title {
-      margin-top: 16px;
-      font-weight: bold;
+    
+    label {
+      display: block;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-muted);
     }
-    button {
-      margin-top: 18px;
-      padding: 10px 18px;
-      font-size: 14px;
+    
+    /* Inputs & selects */
+    input[type="date"],
+    input[type="number"],
+    select {
+      width: 100%;
+      margin-top: 4px;
+      padding: 8px 10px;
+      border-radius: 9px;
+      border: 1px solid var(--border-subtle);
+      background-color: rgba(15, 23, 42, 0.9);
+      color: var(--text-main);
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+    }
+    
+    input[type="date"]::placeholder,
+    input[type="number"]::placeholder {
+      color: var(--text-muted);
+    }
+    
+    input[type="date"]:focus,
+    input[type="number"]:focus,
+    select:focus {
+      border-color: var(--accent-strong);
+      box-shadow: 0 0 0 1px var(--accent), 0 0 0 6px rgba(56, 189, 248, 0.12);
+      background-color: #020617;
+    }
+    
+    /* Button */
+    button[type="submit"] {
+      align-self: flex-start;
+      margin-top: 14px;
+      padding: 10px 20px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      border-radius: 999px;
+      border: none;
       cursor: pointer;
+      background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+      color: #0b1120;
+      box-shadow: 0 14px 30px rgba(56, 189, 248, 0.35);
+      transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease;
     }
-    button:disabled {
-      opacity: 0.6;
+    
+    button[type="submit"]:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 20px 40px rgba(56, 189, 248, 0.45);
+      filter: brightness(1.05);
+    }
+    
+    button[type="submit"]:active:not(:disabled) {
+      transform: translateY(0);
+      box-shadow: 0 10px 20px rgba(56, 189, 248, 0.25);
+    }
+    
+    button[type="submit"]:disabled {
+      opacity: 0.7;
       cursor: not-allowed;
     }
+    
+    /* Error text */
     #error {
-      color: #b00020;
+      color: var(--danger);
       margin-top: 8px;
-      font-size: 13px;
+      font-size: 0.8rem;
     }
+    
+    /* Results card */
+    .card h2 {
+      margin: 0 0 8px 0;
+      font-size: 1.1rem;
+    }
+    
+    #table-container {
+      margin-top: 6px;
+      overflow-x: auto;
+    }
+    
+    /* Table styling */
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 15px;
-      background: #fff;
+      background: rgba(15, 23, 42, 0.9);
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid var(--border-subtle);
     }
-    th, td {
-      border: 1px solid #ddd;
-      padding: 8px;
+    
+    th,
+    td {
+      padding: 8px 10px;
+      font-size: 0.86rem;
       text-align: center;
+      border-bottom: 1px solid rgba(51, 65, 85, 0.9);
     }
+    
+    th:first-child,
+    td:first-child {
+      text-align: left;
+    }
+    
     th {
-      background-color: #f0f0f0;
+      background: linear-gradient(to bottom, rgba(15, 23, 42, 0.9), rgba(15, 23, 42, 1));
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
     }
+    
+    tbody tr:nth-child(odd):not(.totals-row) {
+      background-color: rgba(15, 23, 42, 0.7);
+    }
+    
+    tbody tr:nth-child(even):not(.totals-row) {
+      background-color: rgba(15, 23, 42, 0.95);
+    }
+    
+    tbody tr:hover:not(.totals-row) {
+      background-color: rgba(30, 64, 175, 0.35);
+    }
+    
+    /* Totals row styling */
+    .totals-row {
+      background: var(--accent-soft);
+    }
+    
+    .totals-row td {
+      font-weight: 600;
+    }
+    
+    .totals-row td:first-child {
+      color: var(--accent-strong);
+    }
+    
+    /* “Comparable date” line in each cell is already a smaller span inline */
+    
+    /* “No data” cell */
     .no-data {
-      color: #888;
+      color: var(--text-muted);
       font-style: italic;
+    }
+    
+    /* Responsive tweaks */
+    @media (max-width: 720px) {
+      body {
+        padding: 20px 12px;
+      }
+    
+      .card {
+        padding: 16px 14px;
+      }
+    
+      .choice-row {
+        grid-template-columns: 1fr;
+      }
+    
+      h1 {
+        font-size: 1.5rem;
+      }
     }
   </style>
 </head>
@@ -426,6 +607,8 @@
 
         // Add a totals row: sum of odds across all choices for each year
         const totalsRow = document.createElement('tr');
+
+        totalsRow.classList.add('totals-row');
         
         // Label cell
         const totalsLabelCell = document.createElement('td');
@@ -474,6 +657,7 @@
   </script>
 </body>
 </html>
+
 
 
 
