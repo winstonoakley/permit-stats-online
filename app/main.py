@@ -293,6 +293,57 @@ def estimate_odds(payload: OddsRequest):
     return OddsResponse(**result)
 
 
+@app.get("/debug/analytics")
+def debug_analytics(limit: int = 10):
+    """
+    Debug endpoint to inspect analytics.db.
+    Returns the most recent rows from query_events.
+    """
+    # 1. Check that the DB file exists
+    if not ANALYTICS_DB_PATH.exists():
+        return {
+            "error": "analytics.db not found",
+            "path": str(ANALYTICS_DB_PATH),
+        }
+
+    conn = sqlite3.connect(ANALYTICS_DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+
+    try:
+        # 2. Try to read from query_events
+        cur.execute(
+            """
+            SELECT
+                id,
+                event_time_utc,
+                event_type,
+                status,
+                inputs_json,
+                results_json
+            FROM query_events
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
+        rows = [dict(row) for row in cur.fetchall()]
+    except sqlite3.OperationalError as e:
+        # Covers cases like "no such table: query_events"
+        return {
+            "error": "SQLite error while querying query_events",
+            "details": str(e),
+            "db_path": str(ANALYTICS_DB_PATH),
+        }
+    finally:
+        conn.close()
+
+    return {
+        "db_path": str(ANALYTICS_DB_PATH),
+        "row_count": len(rows),
+        "rows": rows,
+    }
+
 
 
 
