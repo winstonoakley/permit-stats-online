@@ -344,6 +344,38 @@ def debug_analytics(limit: int = 10):
         "rows": rows,
     }
 
+@app.post("/debug/log_test")
+def debug_log_test():
+    """
+    Test endpoint: tries to write a single row into query_events.
+    This lets us see if log_query_event works in isolation.
+    """
+    sample_inputs = {"test": True, "source": "debug_log_test"}
+    sample_results = {"message": "This is a test row"}
+
+    try:
+        log_query_event(
+            inputs=sample_inputs,
+            results=sample_results,
+            status="success",
+            event_type="test_debug",
+            session_id=None,
+            user_id=None,
+            sim_version="v1.0.0",
+            query_index_in_session=None,
+            device_type=None,
+            browser=None,
+            os_name=None,
+            country=None,
+            region=None,
+            referrer=None,
+            latency_ms=None,
+        )
+        return {"ok": True, "message": "Row inserted into query_events"}
+    except Exception as e:
+        # Here we *don't* swallow the error; we return it so we can see what's wrong.
+        return {"ok": False, "error": str(e)}
+
 
 
 
