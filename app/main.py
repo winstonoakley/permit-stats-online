@@ -81,7 +81,7 @@ def log_query_event(
                 inputs_json, results_json,
                 latency_ms, status
             ) VALUES (
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
             )
             """,
             (
@@ -375,6 +375,7 @@ def debug_log_test():
     except Exception as e:
         # Here we *don't* swallow the error; we return it so we can see what's wrong.
         return {"ok": False, "error": str(e)}
+
 
 
 
