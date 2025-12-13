@@ -3,8 +3,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 import os
 from pydantic import BaseModel
-from datetime import date
+from datetime import date, datetime, timezone
 import sqlite3
+import json
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List
@@ -23,6 +24,89 @@ app.add_middleware(
 )
 
 DB_PATH = Path("stats.db")
+
+# Paths
+BASE_DIR = Path(__file__).resolve().parent.parent   # project root (where index.html & schema.sql live)
+DB_DIR = BASE_DIR / "odds_database"
+DB_DIR.mkdir(exist_ok=True)
+
+ANALYTICS_DB_PATH = DB_DIR / "analytics.db"
+SCHEMA_PATH = BASE_DIR / "schema.sql"
+
+
+def init_logging_db():
+    """Create the analytics.db file and ensure query_events table exists."""
+    conn = sqlite3.connect(ANALYTICS_DB_PATH)
+    try:
+        with SCHEMA_PATH.open("r", encoding="utf-8") as f:
+            schema_sql = f.read()
+        conn.executescript(schema_sql)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# Run this once when the app starts
+init_logging_db()
+
+def log_query_event(
+    inputs: dict,
+    results: dict,
+    status: str = "success",
+    event_type: str = "get_table",
+    session_id: str | None = None,
+    user_id: str | None = None,
+    sim_version: str | None = None,
+    query_index_in_session: int | None = None,
+    device_type: str | None = None,
+    browser: str | None = None,
+    os_name: str | None = None,
+    country: str | None = None,
+    region: str | None = None,
+    referrer: str | None = None,
+    latency_ms: int | None = None,
+) -> None:
+    """Insert a single query log row into the analytics database."""
+    event_time_utc = datetime.now(timezone.utc).isoformat()
+
+    conn = sqlite3.connect(ANALYTICS_DB_PATH)
+    try:
+        conn.execute(
+            """
+            INSERT INTO query_events (
+                session_id, user_id,
+                event_time_utc, event_type,
+                country, region, device_type, browser, os, referrer,
+                sim_version, query_index_in_session,
+                inputs_json, results_json,
+                latency_ms, status
+            ) VALUES (
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
+            """,
+            (
+                session_id,
+                user_id,
+                event_time_utc,
+                event_type,
+                country,
+                region,
+                device_type,
+                browser,
+                os_name,
+                referrer,
+                sim_version,
+                query_index_in_session,
+                json.dumps(inputs),
+                json.dumps(results),
+                latency_ms,
+                status,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
 
 # Path to the repo root (where index.html lives)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -157,7 +241,23 @@ def estimate_odds(payload: OddsRequest):
     # Use environment variable if set, otherwise fall back to local folder
     db_dir = os.getenv("ODDS_DB_DIR") or r"C:\permit-stats-backend-starter\odds_databases"
 
+    # ---- Build "inputs" dict for logging ----
+    # This captures exactly what the user asked for.
+    inputs = {
+        "permit_year": payload.permit_year,
+        "data_years": payload.data_years,
+        "choices": [
+            {
+                "zone": c.zone,
+                "month": c.month,
+                "day": c.day,
+                "group_size": c.group_size,
+            }
+            for c in payload.choices
+        ],
+    }
 
+    # ---- Run the odds engine (your existing logic) ----
     result = estimate_odds_for_choice_set(
         permit_year=payload.permit_year,
         choices=choices,
@@ -165,5 +265,29 @@ def estimate_odds(payload: OddsRequest):
         db_dir=db_dir,
     )
 
+    # ---- Log this "Get Table" event into analytics.db ----
+    # Minimal version: just log inputs + results + status.
+    log_query_event(
+        inputs=inputs,
+        results=result,
+        status="success",
+        event_type="get_table",
+        # The rest of the fields can stay None for now:
+        session_id=None,
+        user_id=None,
+        sim_version="v1.0.0",
+        query_index_in_session=None,
+        device_type=None,
+        browser=None,
+        os_name=None,
+        country=None,
+        region=None,
+        referrer=None,
+        latency_ms=None,
+    )
+
+    # ---- Return the response as before ----
     return OddsResponse(**result)
+
+
 
