@@ -35,3 +35,42 @@ CREATE INDEX IF NOT EXISTS idx_query_events_session_time
 
 CREATE INDEX IF NOT EXISTS idx_query_events_event_type
     ON query_events (event_type);
+
+-- Table to log each "Get Table" query event
+CREATE TABLE IF NOT EXISTS query_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    -- Identity / grouping (can be NULL for now if you don't wire them yet)
+    session_id TEXT,
+    user_id    TEXT,
+
+    -- Event metadata
+    event_time_utc TEXT NOT NULL,
+    event_type     TEXT NOT NULL DEFAULT 'get_table',
+
+    -- Context (optional)
+    country     TEXT,
+    region      TEXT,
+    device_type TEXT,
+    browser     TEXT,
+    os          TEXT,
+    referrer    TEXT,
+
+    -- Simulation / app versioning
+    sim_version            TEXT,
+    query_index_in_session INTEGER,
+
+    -- Inputs / results (JSON blobs)
+    inputs_json  TEXT NOT NULL,
+    results_json TEXT NOT NULL,
+
+    -- Diagnostics
+    latency_ms INTEGER,
+    status     TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_query_events_event_time
+    ON query_events (event_time_utc);
+
+CREATE INDEX IF NOT EXISTS idx_query_events_event_type
+    ON query_events (event_type);
