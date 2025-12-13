@@ -265,29 +265,34 @@ def estimate_odds(payload: OddsRequest):
         db_dir=db_dir,
     )
 
-    # ---- Log this "Get Table" event into analytics.db ----
-    # Minimal version: just log inputs + results + status.
-    log_query_event(
-        inputs=inputs,
-        results=result,
-        status="success",
-        event_type="get_table",
-        # The rest of the fields can stay None for now:
-        session_id=None,
-        user_id=None,
-        sim_version="v1.0.0",
-        query_index_in_session=None,
-        device_type=None,
-        browser=None,
-        os_name=None,
-        country=None,
-        region=None,
-        referrer=None,
-        latency_ms=None,
-    )
+    # ---- Log this "Get Table" event into analytics.db (best-effort) ----
+    try:
+        log_query_event(
+            inputs=inputs,
+            results=result,
+            status="success",
+            event_type="get_table",
+            # The rest of the fields can stay None for now:
+            session_id=None,
+            user_id=None,
+            sim_version="v1.0.0",
+            query_index_in_session=None,
+            device_type=None,
+            browser=None,
+            os_name=None,
+            country=None,
+            region=None,
+            referrer=None,
+            latency_ms=None,
+        )
+    except Exception as e:
+        # Do not break the main functionality if analytics fails
+        print("Analytics logging failed:", e)
 
     # ---- Return the response as before ----
     return OddsResponse(**result)
+
+
 
 
 
