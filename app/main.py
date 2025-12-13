@@ -67,6 +67,10 @@ def log_query_event(
     latency_ms: int | None = None,
 ) -> None:
     """Insert a single query log row into the analytics database."""
+    # Ensure we never violate NOT NULL on session_id
+    if session_id is None:
+        session_id = "anonymous"
+        
     event_time_utc = datetime.now(timezone.utc).isoformat()
 
     conn = sqlite3.connect(ANALYTICS_DB_PATH)
@@ -375,6 +379,7 @@ def debug_log_test():
     except Exception as e:
         # Here we *don't* swallow the error; we return it so we can see what's wrong.
         return {"ok": False, "error": str(e)}
+
 
 
 
