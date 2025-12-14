@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 import os
@@ -146,6 +146,14 @@ class OddsRequest(BaseModel):
     data_years: List[int] = [2020, 2021, 2022, 2023, 2024]  # or your four years
     choices: List[ChoiceInput]  # up to 3
 
+    # Optional metadata from the frontend
+    session_id: str | None = None
+    query_index: int | None = None
+    device_type: str | None = None
+    browser: str | None = None
+    os_name: str | None = None
+    latency_ms: int | None = None
+
 class OddsResponse(BaseModel):
     years: List[int]
     choices: List[dict]  # keep loose for now; can tighten later
@@ -229,7 +237,7 @@ def get_stats(request: StatsRequest):
     )
 
 @app.post("/estimate_odds", response_model=OddsResponse)
-def estimate_odds(payload: OddsRequest):
+def estimate_odds(payload: OddsRequest, request: Request):
     # Convert Pydantic models to dataclass Choices
     choices = [
         Choice(
@@ -246,7 +254,6 @@ def estimate_odds(payload: OddsRequest):
     db_dir = os.getenv("ODDS_DB_DIR") or r"C:\permit-stats-backend-starter\odds_databases"
 
     # ---- Build "inputs" dict for logging ----
-    # This captures exactly what the user asked for.
     inputs = {
         "permit_year": payload.permit_year,
         "data_years": payload.data_years,
@@ -269,6 +276,16 @@ def estimate_odds(payload: OddsRequest):
         db_dir=db_dir,
     )
 
+    # ---- Extract metadata from payload & request ----
+    session_id = payload.session_id
+    query_index_in_session = payload.query_index
+    device_type = payload.device_type
+    browser = payload.browser
+    os_name = payload.os_name
+    latency_ms = payload.latency_ms
+    sim_version = "v1.0.0"  # bump this when you change the algorithm
+    referrer = request.headers.get("referer")
+
     # ---- Log this "Get Table" event into analytics.db (best-effort) ----
     try:
         log_query_event(
@@ -276,18 +293,17 @@ def estimate_odds(payload: OddsRequest):
             results=result,
             status="success",
             event_type="get_table",
-            # The rest of the fields can stay None for now:
-            session_id=None,
+            session_id=session_id,
             user_id=None,
-            sim_version="v1.0.0",
-            query_index_in_session=None,
-            device_type=None,
-            browser=None,
-            os_name=None,
+            sim_version=sim_version,
+            query_index_in_session=query_index_in_session,
+            device_type=device_type,
+            browser=browser,
+            os_name=os_name,
             country=None,
             region=None,
-            referrer=None,
-            latency_ms=None,
+            referrer=referrer,
+            latency_ms=latency_ms,
         )
     except Exception as e:
         # Do not break the main functionality if analytics fails
@@ -379,6 +395,7 @@ def debug_log_test():
     except Exception as e:
         # Here we *don't* swallow the error; we return it so we can see what's wrong.
         return {"ok": False, "error": str(e)}
+
 
 
 
