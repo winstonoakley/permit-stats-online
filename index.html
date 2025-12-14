@@ -564,25 +564,41 @@
     submitButton.textContent = 'Loading...';
 
     try {
-      const response = await fetch(API_BASE_URL + '/estimate_odds', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          permit_year: permitYear,
-          data_years: dataYears,
-          choices: apiChoices,
+      // --- NEW: collect session & device metadata for analytics ---
+      const sessionId = getSessionId();
+      const queryIndex = getNextQueryIndex();
+      const deviceType = getDeviceType();
+      const browserUa = navigator.userAgent || '';
+      const osName = getOsName();
+  
+      const payload = {
+        permit_year: permitYear,
+        data_years: dataYears,
+        choices: apiChoices,
+  
+        // These fields line up with OddsRequest in main.py
+        session_id: sessionId,
+        query_index: queryIndex,
+        device_type: deviceType,
+        browser: browserUa,
+        os_name: osName
+        // latency_ms: can be added later if we want
+      };
+  
+      console.log('Payload to /estimate_odds:', payload);
+  
+      submitButton.disabled = true;
+      submitButton.textContent = 'Loading...';
+  
+      try {
+        const response = await fetch(API_BASE_URL + '/estimate_odds', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        });
 
-          // These fields line up with OddsRequest in main.py
-          session_id: sessionId,
-          query_index: queryIndex,
-          device_type: deviceType,
-          browser: browserUa,
-          os_name: osName
-          // latency_ms: can be added later if we want
-        })
-      });
 
       if (!response.ok) {
         errorDiv.textContent = 'Error from server: ' + response.status + ' ' + response.statusText;
@@ -719,6 +735,7 @@
 
 </body>
 </html>
+
 
 
 
