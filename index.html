@@ -404,167 +404,156 @@
   </div> <!-- end .main-wrapper -->
 
   <script>
-  const API_BASE_URL = '';
-
-  // --- Helpers for session & device metadata ---
-
-  function getSessionId() {
-    let id = localStorage.getItem('sessionId');
-    if (!id) {
-      if (window.crypto && window.crypto.randomUUID) {
-        id = crypto.randomUUID();
-      } else {
-        id = 'sess-' + String(Math.random()).slice(2);
+    const API_BASE_URL = '';
+  
+    // --- Helpers for session & device metadata ---
+  
+    function getSessionId() {
+      let id = localStorage.getItem('sessionId');
+      if (!id) {
+        if (window.crypto && window.crypto.randomUUID) {
+          id = crypto.randomUUID();
+        } else {
+          id = 'sess-' + String(Math.random()).slice(2);
+        }
+        localStorage.setItem('sessionId', id);
       }
-      localStorage.setItem('sessionId', id);
+      return id;
     }
-    return id;
-  }
-
-  function getNextQueryIndex() {
-    const current = Number(localStorage.getItem('queryIndex') || '0');
-    const next = current + 1;
-    localStorage.setItem('queryIndex', String(next));
-    return next;
-  }
-
-  function getDeviceType() {
-    const ua = navigator.userAgent || '';
-    if (/Mobi|Android/i.test(ua)) return 'mobile';
-    if (/Tablet|iPad/i.test(ua)) return 'tablet';
-    return 'desktop';
-  }
-
-  function getOsName() {
-    const ua = navigator.userAgent || '';
-    if (ua.includes('Windows')) return 'Windows';
-    if (ua.includes('Mac OS') || ua.includes('Macintosh')) return 'macOS';
-    if (ua.includes('Linux')) return 'Linux';
-    if (ua.includes('Android')) return 'Android';
-    if (/iPhone|iPad|iPod/.test(ua)) return 'iOS';
-    return 'Unknown';
-  }
-
-  // Convert "YYYY-MM-DD" (from the form) to "Mmm dd"
-  function formatIsoDateToMmmDd(isoDate) {
-    if (!isoDate) return '';
-    const [yearStr, monthStr, dayStr] = isoDate.split('-');
-    const month = parseInt(monthStr, 10);
-    const day = parseInt(dayStr, 10);
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return months[month - 1] + ' ' + day.toString();
-  }
-
-  // Convert "MM-DD-YYYY" (from backend comparable date) to "Mmm dd"
-  function formatMmDdYyyyToMmmDd(mdY) {
-    if (!mdY) return '';
-    const [monthStr, dayStr, yearStr] = mdY.split('-');
-    const month = parseInt(monthStr, 10);
-    const day = parseInt(dayStr, 10);
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return months[month - 1] + ' ' + day.toString();
-  }
-
-  const form = document.getElementById('stats-form');
-  const errorDiv = document.getElementById('error');
-  const tableContainer = document.getElementById('table-container');
-  const submitButton = document.getElementById('submit-button');
-
-  form.addEventListener('submit', async (event) => {
-    event.preventDefault();
-
-    errorDiv.textContent = '';
-    tableContainer.innerHTML = 'Building table...';
-
-    // Collect all choices from the form
-    const choices = [
-      {
-        label: 'Choice 1',
-        zone: document.getElementById('zone1').value.trim(),
-        date: document.getElementById('date1').value,
-        groupSizeValue: document.getElementById('group_size1').value
-      },
-      {
-        label: 'Choice 2',
-        zone: document.getElementById('zone2').value.trim(),
-        date: document.getElementById('date2').value,
-        groupSizeValue: document.getElementById('group_size2').value
-      },
-      {
-        label: 'Choice 3',
-        zone: document.getElementById('zone3').value.trim(),
-        date: document.getElementById('date3').value,
-        groupSizeValue: document.getElementById('group_size3').value
-      }
-    ];
-
-    // Keep only rows where zone AND date are filled
-    const filledChoices = choices.filter(
-      (c) => c.zone !== '' && c.date !== ''
-    );
-
-    if (filledChoices.length === 0) {
-      errorDiv.textContent = 'Please fill in at least one zone/date choice with a group size.';
-      tableContainer.innerHTML = '';
-      return;
+  
+    function getNextQueryIndex() {
+      const current = Number(localStorage.getItem('queryIndex') || '0');
+      const next = current + 1;
+      localStorage.setItem('queryIndex', String(next));
+      return next;
     }
-
-    // Extra safety: ensure dates are within the allowed lottery window
-    const minDate = new Date('2026-05-15');
-    const maxDate = new Date('2026-10-31');
-    
-    for (const c of filledChoices) {
-      const d = new Date(c.date);
-      if (isNaN(d.getTime()) || d < minDate || d > maxDate) {
-        errorDiv.textContent = 'Dates must be between May 15 and Oct 31, 2026.';
+  
+    function getDeviceType() {
+      const ua = navigator.userAgent || '';
+      if (/Mobi|Android/i.test(ua)) return 'mobile';
+      if (/Tablet|iPad/i.test(ua)) return 'tablet';
+      return 'desktop';
+    }
+  
+    function getOsName() {
+      const ua = navigator.userAgent || '';
+      if (ua.includes('Windows')) return 'Windows';
+      if (ua.includes('Mac OS') || ua.includes('Macintosh')) return 'macOS';
+      if (ua.includes('Linux')) return 'Linux';
+      if (ua.includes('Android')) return 'Android';
+      if (/iPhone|iPad|iPod/.test(ua)) return 'iOS';
+      return 'Unknown';
+    }
+  
+    // Convert "YYYY-MM-DD" (from the form) to "Mmm dd"
+    function formatIsoDateToMmmDd(isoDate) {
+      if (!isoDate) return '';
+      const [yearStr, monthStr, dayStr] = isoDate.split('-');
+      const month = parseInt(monthStr, 10);
+      const day = parseInt(dayStr, 10);
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return months[month - 1] + ' ' + day.toString();
+    }
+  
+    // Convert "MM-DD-YYYY" (from backend comparable date) to "Mmm dd"
+    function formatMmDdYyyyToMmmDd(mdY) {
+      if (!mdY) return '';
+      const [monthStr, dayStr, yearStr] = mdY.split('-');
+      const month = parseInt(monthStr, 10);
+      const day = parseInt(dayStr, 10);
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return months[month - 1] + ' ' + day.toString();
+    }
+  
+    const form = document.getElementById('stats-form');
+    const errorDiv = document.getElementById('error');
+    const tableContainer = document.getElementById('table-container');
+    const submitButton = document.getElementById('submit-button');
+  
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+  
+      errorDiv.textContent = '';
+      tableContainer.innerHTML = 'Building table...';
+  
+      // Collect all choices from the form
+      const choices = [
+        {
+          label: 'Choice 1',
+          zone: document.getElementById('zone1').value.trim(),
+          date: document.getElementById('date1').value,
+          groupSizeValue: document.getElementById('group_size1').value
+        },
+        {
+          label: 'Choice 2',
+          zone: document.getElementById('zone2').value.trim(),
+          date: document.getElementById('date2').value,
+          groupSizeValue: document.getElementById('group_size2').value
+        },
+        {
+          label: 'Choice 3',
+          zone: document.getElementById('zone3').value.trim(),
+          date: document.getElementById('date3').value,
+          groupSizeValue: document.getElementById('group_size3').value
+        }
+      ];
+  
+      // Keep only rows where zone AND date are filled
+      const filledChoices = choices.filter(
+        (c) => c.zone !== '' && c.date !== ''
+      );
+  
+      if (filledChoices.length === 0) {
+        errorDiv.textContent = 'Please fill in at least one zone/date choice with a group size.';
         tableContainer.innerHTML = '';
         return;
       }
-    }
-
-    // Validate group size for each filled choice
-    for (const c of filledChoices) {
-      const size = parseInt(c.groupSizeValue, 10);
-      if (!c.groupSizeValue || isNaN(size) || size < 1) {
-        errorDiv.textContent = `Please enter a valid group size (at least 1) for ${c.label}.`;
-        tableContainer.innerHTML = '';
-        return;
+  
+      // Extra safety: ensure dates are within the allowed lottery window
+      const minDate = new Date('2026-05-15');
+      const maxDate = new Date('2026-10-31');
+      
+      for (const c of filledChoices) {
+        const d = new Date(c.date);
+        if (isNaN(d.getTime()) || d < minDate || d > maxDate) {
+          errorDiv.textContent = 'Dates must be between May 15 and Oct 31, 2026.';
+          tableContainer.innerHTML = '';
+          return;
+        }
       }
-      c.groupSize = size;
-    }
-
-    // Use the year from the first filled choice's date as the permit year
-    const [permitYearStr] = filledChoices[0].date.split('-');
-    const permitYear = parseInt(permitYearStr, 10);
-
-    // Historical years used by your databases
-    const dataYears = [2020, 2021, 2022, 2023, 2024];
-
-    // Prepare payload choices (only filled ones)
-    const apiChoices = filledChoices.map((c) => {
-      const [yearStr, monthStr, dayStr] = c.date.split('-');
-      return {
-        zone: c.zone,
-        month: parseInt(monthStr, 10),
-        day: parseInt(dayStr, 10),
-        group_size: c.groupSize
-      };
-    });
-
-    // --- NEW: collect session & device metadata for analytics ---
-    const sessionId = getSessionId();
-    const queryIndex = getNextQueryIndex();
-    const deviceType = getDeviceType();
-    const browserUa = navigator.userAgent || '';
-    const osName = getOsName();
-
-    submitButton.disabled = true;
-    submitButton.textContent = 'Loading...';
-
-    try {
-      // --- NEW: collect session & device metadata for analytics ---
+  
+      // Validate group size for each filled choice
+      for (const c of filledChoices) {
+        const size = parseInt(c.groupSizeValue, 10);
+        if (!c.groupSizeValue || isNaN(size) || size < 1) {
+          errorDiv.textContent = `Please enter a valid group size (at least 1) for ${c.label}.`;
+          tableContainer.innerHTML = '';
+          return;
+        }
+        c.groupSize = size;
+      }
+  
+      // Use the year from the first filled choice's date as the permit year
+      const [permitYearStr] = filledChoices[0].date.split('-');
+      const permitYear = parseInt(permitYearStr, 10);
+  
+      // Historical years used by your databases
+      const dataYears = [2020, 2021, 2022, 2023, 2024];
+  
+      // Prepare payload choices (only filled ones)
+      const apiChoices = filledChoices.map((c) => {
+        const [yearStr, monthStr, dayStr] = c.date.split('-');
+        return {
+          zone: c.zone,
+          month: parseInt(monthStr, 10),
+          day: parseInt(dayStr, 10),
+          group_size: c.groupSize
+        };
+      });
+  
+      // --- collect session & device metadata for analytics ---
       const sessionId = getSessionId();
       const queryIndex = getNextQueryIndex();
       const deviceType = getDeviceType();
@@ -598,155 +587,137 @@
           },
           body: JSON.stringify(payload)
         });
-
-
-      if (!response.ok) {
-        errorDiv.textContent = 'Error from server: ' + response.status + ' ' + response.statusText;
-        tableContainer.innerHTML = '';
-        return;
-      }
-
-      const data = await response.json();
-
-      const years = data.years || [];
-      const resultChoices = data.choices || [];
-
-      // Build table
-      const table = document.createElement('table');
-
-      // Header row
-      const thead = document.createElement('thead');
-      const headerRow = document.createElement('tr');
-      const firstHeader = document.createElement('th');
-      firstHeader.textContent = 'Zone / Date / Group Size';
-      headerRow.appendChild(firstHeader);
-
-      years.forEach((year) => {
-        const th = document.createElement('th');
-        th.textContent = year.toString();
-        headerRow.appendChild(th);
-      });
-
-      thead.appendChild(headerRow);
-      table.appendChild(thead);
-
-      const tbody = document.createElement('tbody');
-
-      // For each filled choice, add a row
-      filledChoices.forEach((c, index) => {
-        const backendChoice = resultChoices[index];
-
-        const row = document.createElement('tr');
-
-        const labelCell = document.createElement('td');
-        const prettyPermitDate = formatIsoDateToMmmDd(c.date);
-        labelCell.textContent =
-          `${c.label}: ${c.zone} (${prettyPermitDate}), ${c.groupSize} people`;
-        row.appendChild(labelCell);
-
+  
+        if (!response.ok) {
+          errorDiv.textContent = 'Error from server: ' + response.status + ' ' + response.statusText;
+          tableContainer.innerHTML = '';
+          return;
+        }
+  
+        const data = await response.json();
+  
+        const years = data.years || [];
+        const resultChoices = data.choices || [];
+  
+        // Build table
+        const table = document.createElement('table');
+  
+        // Header row
+        const thead = document.createElement('thead');
+        const headerRow = document.createElement('tr');
+        const firstHeader = document.createElement('th');
+        firstHeader.textContent = 'Zone / Date / Group Size';
+        headerRow.appendChild(firstHeader);
+  
         years.forEach((year) => {
-          const cell = document.createElement('td');
-
-          if (!backendChoice) {
-            cell.textContent = 'N/A';
-            cell.className = 'no-data';
-            row.appendChild(cell);
-            return;
-          }
-
-          const oddsByYear = backendChoice.odds_by_year || {};
-          const compDatesByYear = backendChoice.comp_dates_by_year || {};
-
-          const value = oddsByYear[year];
-          const compDate = compDatesByYear[year];
-
-          if (value === null || value === undefined) {
-            cell.textContent = '';
-          } else {
-            const prettyCompDate = compDate ? formatMmDdYyyyToMmmDd(compDate) : '';
-
-            if (prettyCompDate) {
-              cell.innerHTML =
-                (value * 100).toFixed(1) + '%' +
-                '<br><span style="font-size: 0.9em; color: #666;">' +
-                prettyCompDate +
-                '</span>';
-            } else {
-              cell.textContent = (value * 100).toFixed(1) + '%';
-            }
-          }
-
-          row.appendChild(cell);
+          const th = document.createElement('th');
+          th.textContent = year.toString();
+          headerRow.appendChild(th);
         });
-
-        tbody.appendChild(row);
-      });
-
-      // Add a totals row: sum of odds across all choices for each year
-      const totalsRow = document.createElement('tr');
-
-      totalsRow.classList.add('totals-row');
-      
-      // Label cell
-      const totalsLabelCell = document.createElement('td');
-      totalsLabelCell.textContent = 'Total odds of winning any choice';
-      totalsLabelCell.style.fontWeight = 'bold';
-      totalsRow.appendChild(totalsLabelCell);
-      
-      // One cell per year with the summed odds
-      years.forEach((year) => {
-        let total = 0;
-      
-        // Sum odds across all filled choices for this year
+  
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+  
+        const tbody = document.createElement('tbody');
+  
+        // For each filled choice, add a row
         filledChoices.forEach((c, index) => {
           const backendChoice = resultChoices[index];
-          if (!backendChoice) return;
-      
-          const oddsByYear = backendChoice.odds_by_year || {};
-          const value = oddsByYear[year];
-      
-          if (value !== null && value !== undefined) {
-            total += value;
-          }
+  
+          const row = document.createElement('tr');
+  
+          const labelCell = document.createElement('td');
+          const prettyPermitDate = formatIsoDateToMmmDd(c.date);
+          labelCell.textContent =
+            `${c.label}: ${c.zone} (${prettyPermitDate}), ${c.groupSize} people`;
+          row.appendChild(labelCell);
+  
+          years.forEach((year) => {
+            const cell = document.createElement('td');
+  
+            if (!backendChoice) {
+              cell.textContent = 'N/A';
+              cell.className = 'no-data';
+              row.appendChild(cell);
+              return;
+            }
+  
+            const oddsByYear = backendChoice.odds_by_year || {};
+            const compDatesByYear = backendChoice.comp_dates_by_year || {};
+  
+            const value = oddsByYear[year];
+            const compDate = compDatesByYear[year];
+  
+            if (value === null || value === undefined) {
+              cell.textContent = '';
+            } else {
+              const prettyCompDate = compDate ? formatMmDdYyyyToMmmDd(compDate) : '';
+  
+              if (prettyCompDate) {
+                cell.innerHTML =
+                  (value * 100).toFixed(1) + '%' +
+                  '<br><span style="font-size: 0.9em; color: #666;">' +
+                  prettyCompDate +
+                  '</span>';
+              } else {
+                cell.textContent = (value * 100).toFixed(1) + '%';
+              }
+            }
+  
+            row.appendChild(cell);
+          });
+  
+          tbody.appendChild(row);
         });
-      
-        const cell = document.createElement('td');
-        cell.textContent = (total * 100).toFixed(1) + '%';
-        cell.style.fontWeight = 'bold';
-        totalsRow.appendChild(cell);
-      });
-      
-      tbody.appendChild(totalsRow);
-
-      table.appendChild(tbody);
-      tableContainer.innerHTML = '';
-      tableContainer.appendChild(table);
-
-    } catch (err) {
-      console.error(err);
-      errorDiv.textContent = 'Something went wrong while contacting the server.';
-      tableContainer.innerHTML = '';
-    } finally {
-      submitButton.disabled = false;
-      submitButton.textContent = 'Get Table';
-    }
-  });
-</script>
-
+  
+        // Add a totals row: sum of odds across all choices for each year
+        const totalsRow = document.createElement('tr');
+        totalsRow.classList.add('totals-row');
+  
+        // Label cell
+        const totalsLabelCell = document.createElement('td');
+        totalsLabelCell.textContent = 'Total odds of winning any choice';
+        totalsLabelCell.style.fontWeight = 'bold';
+        totalsRow.appendChild(totalsLabelCell);
+  
+        // One cell per year with the summed odds
+        years.forEach((year) => {
+          let total = 0;
+  
+          // Sum odds across all filled choices for this year
+          filledChoices.forEach((c, index) => {
+            const backendChoice = resultChoices[index];
+            if (!backendChoice) return;
+  
+            const oddsByYear = backendChoice.odds_by_year || {};
+            const value = oddsByYear[year];
+  
+            if (value !== null && value !== undefined) {
+              total += value;
+            }
+          });
+  
+          const cell = document.createElement('td');
+          cell.textContent = (total * 100).toFixed(1) + '%';
+          cell.style.fontWeight = 'bold';
+          totalsRow.appendChild(cell);
+        });
+  
+        tbody.appendChild(totalsRow);
+  
+        table.appendChild(tbody);
+        tableContainer.innerHTML = '';
+        tableContainer.appendChild(table);
+  
+      } catch (err) {
+        console.error(err);
+        errorDiv.textContent = 'Something went wrong while contacting the server.';
+        tableContainer.innerHTML = '';
+      } finally {
+        submitButton.disabled = false;
+        submitButton.textContent = 'Get Table';
+      }
+    });
+  </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
