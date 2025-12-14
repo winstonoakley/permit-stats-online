@@ -317,9 +317,8 @@ def estimate_odds(payload: OddsRequest, request: Request):
 def debug_analytics(limit: int = 10):
     """
     Debug endpoint to inspect analytics.db.
-    Returns the most recent rows from query_events.
+    Returns the most recent rows from query_events, including metadata.
     """
-    # 1. Check that the DB file exists
     if not ANALYTICS_DB_PATH.exists():
         return {
             "error": "analytics.db not found",
@@ -331,7 +330,6 @@ def debug_analytics(limit: int = 10):
     cur = conn.cursor()
 
     try:
-        # 2. Try to read from query_events
         cur.execute(
             """
             SELECT
@@ -339,6 +337,14 @@ def debug_analytics(limit: int = 10):
                 event_time_utc,
                 event_type,
                 status,
+                session_id,
+                query_index_in_session,
+                device_type,
+                browser,
+                os,
+                referrer,
+                sim_version,
+                latency_ms,
                 inputs_json,
                 results_json
             FROM query_events
@@ -349,7 +355,6 @@ def debug_analytics(limit: int = 10):
         )
         rows = [dict(row) for row in cur.fetchall()]
     except sqlite3.OperationalError as e:
-        # Covers cases like "no such table: query_events"
         return {
             "error": "SQLite error while querying query_events",
             "details": str(e),
@@ -363,6 +368,7 @@ def debug_analytics(limit: int = 10):
         "row_count": len(rows),
         "rows": rows,
     }
+
 
 @app.post("/debug/log_test")
 def debug_log_test():
@@ -395,6 +401,7 @@ def debug_log_test():
     except Exception as e:
         # Here we *don't* swallow the error; we return it so we can see what's wrong.
         return {"ok": False, "error": str(e)}
+
 
 
 
