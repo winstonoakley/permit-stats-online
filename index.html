@@ -510,6 +510,28 @@
         tableContainer.innerHTML = '';
         return;
       }
+
+      // Validation: no duplicate zone+date across choices
+      const seen = new Map(); // key -> label (e.g., "Core|2026-07-15" -> "Choice 1")
+      
+      for (const c of filledChoices) {
+        // Normalize zone and date just in case
+        const zone = (c.zone || '').trim();
+        const date = (c.date || '').trim();
+      
+        const key = zone.toLowerCase() + '|' + date; // case-insensitive zone compare
+      
+        if (seen.has(key)) {
+          const first = seen.get(key);
+          errorDiv.textContent =
+            `Invalid choices: ${first} and ${c.label} have the same zone and date (${zone}, ${formatIsoDateToMmmDd(date)}). ` +
+            `The lottery does not allow duplicate zone/date selections.`;
+          tableContainer.innerHTML = '';
+          return;
+        }
+      
+        seen.set(key, c.label);
+      }
   
       // Extra safety: ensure dates are within the allowed lottery window
       const minDate = new Date('2026-05-15');
@@ -721,3 +743,4 @@
   </script>
 </body>
 </html>
+
