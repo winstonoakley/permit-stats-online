@@ -232,7 +232,13 @@
     .totals-row td:first-child {
       color: var(--accent-strong);
     }
-    
+
+    /* Predicted column styling */
+    th.pred-col,
+    td.pred-col {
+      background: rgba(56, 189, 248, 0.06);
+    }
+
     /* “Comparable date” line in each cell is already a smaller span inline */
     
     /* “No data” cell */
@@ -405,6 +411,152 @@
 
   <script>
     const API_BASE_URL = '';
+
+        // -------------------------
+    // Prediction helpers (2026)
+    // -------------------------
+
+    const PREDICT_YEAR = 2026;
+    const PREDICT_LABEL = `${PREDICT_YEAR} (pred)`;
+
+    function clamp(x, lo, hi) {
+      return Math.max(lo, Math.min(hi, x));
+    }
+
+    function logit(p) {
+      p = clamp(p, 1e-6, 1 - 1e-6);
+      return Math.log(p / (1 - p));
+    }
+
+    function invLogit(x) {
+      const ex = Math.exp(x);
+      return ex / (1 + ex);
+    }
+
+    // Simple OLS fit for y = a + b*t
+    function fitLine(points) {
+      const n = points.length;
+      const meanT = points.reduce((s, p) => s + p.t, 0) / n;
+      const meanY = points.reduce((s, p) => s + p.y, 0) / n;
+
+      let num = 0;
+      let den = 0;
+      for (const p of points) {
+        num += (p.t - meanT) * (p.y - meanY);
+        den += (p.t - meanT) * (p.t - meanT);
+      }
+      const b = den === 0 ? 0 : num / den;
+      const a = meanY - b * meanT;
+      return { a, b };
+    }
+
+    /**
+     * Forecast a bounded probability for targetYear using logit-linear trend.
+     * Uses the most recent `window` points.
+     * Falls back to last-observation-carried-forward if fewer than 2 points.
+     */
+    function forecastProbLogit(series, targetYear, window = 3) {
+      const clean = (series || [])
+        .filter(d => Number.isFinite(d.year) && Number.isFinite(d.p))
+        .sort((a, b) => a.year - b.year);
+
+      if (clean.length === 0) return null;
+
+      const recent = clean.slice(Math.max(0, clean.length - window));
+      if (recent.length === 1) return clamp(recent[0].p, 0, 1);
+
+      const pts = recent.map(d => ({ t: d.year, y: logit(d.p) }));
+      const { a, b } = fitLine(pts);
+
+      const yHat = a + b * targetYear;
+      return clamp(invLogit(yHat), 0.0005, 0.9995);
+    }
+
+    /**
+     * Build 2026 predictions for a set of ranked choices using priority-consistent conditioning.
+     * Expects resultChoices to be aligned with filledChoices order (Choice 1/2/3).
+     *
+     * Returns:
+     * {
+     *   P1, P2, P3, total,
+     *   byChoice: [P1, P2, P3] aligned to filledChoices indices
+     * }
+     *
+     * If fewer than 2 filled choices, it still works (predicts what's available).
+     */
+    function predict2026ForChoiceSet(years, resultChoices, filledChoices) {
+      // We only use historical years (exclude any pre-existing pred column)
+      const histYears = (years || []).filter(y => Number.isFinite(y));
+
+      // Extract series for P1, and conditional q2/q3
+      const P1Series = [];
+      const q2Series = [];
+      const q3Series = [];
+
+      function getP(choiceIdx, year) {
+        const bc = resultChoices[choiceIdx];
+        if (!bc) return null;
+        const oddsByYear = bc.odds_by_year || {};
+        const v = oddsByYear[year];
+        return (v === null || v === undefined) ? null : v; // v is already 0..1
+      }
+
+      // Build per-year data where available for the ranked set (up to 3)
+      for (const y of histYears.slice().sort((a, b) => a - b)) {
+        const P1 = filledChoices[0] ? getP(0, y) : null;
+        const P2 = filledChoices[1] ? getP(1, y) : null;
+        const P3 = filledChoices[2] ? getP(2, y) : null;
+
+        if (Number.isFinite(P1)) {
+          P1Series.push({ year: y, p: clamp(P1, 0, 1) });
+        }
+
+        // Conditional for choice 2 (if choice 2 exists)
+        if (filledChoices[1] && Number.isFinite(P1) && Number.isFinite(P2)) {
+          const denom2 = 1 - P1;
+          if (denom2 > 1e-9) {
+            q2Series.push({ year: y, p: clamp(P2 / denom2, 0, 1) });
+          }
+        }
+
+        // Conditional for choice 3 (if choice 3 exists)
+        if (filledChoices[2] && Number.isFinite(P1) && Number.isFinite(P2) && Number.isFinite(P3)) {
+          const denom3 = 1 - P1 - P2;
+          if (denom3 > 1e-9) {
+            q3Series.push({ year: y, p: clamp(P3 / denom3, 0, 1) });
+          }
+        }
+      }
+
+      // Forecast
+      const P1Hat = filledChoices[0] ? forecastProbLogit(P1Series, PREDICT_YEAR, 3) : null;
+
+      // If only Choice 1 provided, total = P1
+      if (filledChoices.length === 1) {
+        if (P1Hat == null) return null;
+        return { P1: P1Hat, P2: null, P3: null, total: P1Hat, byChoice: [P1Hat] };
+      }
+
+      const q2Hat = filledChoices[1] ? forecastProbLogit(q2Series, PREDICT_YEAR, 3) : null;
+      if (P1Hat == null || q2Hat == null) return null;
+
+      const P2Hat = clamp((1 - P1Hat) * q2Hat, 0, 1);
+
+      // If only Choices 1 & 2
+      if (filledChoices.length === 2) {
+        const total = clamp(P1Hat + P2Hat, 0, 1);
+        return { P1: P1Hat, P2: P2Hat, P3: null, total, byChoice: [P1Hat, P2Hat] };
+      }
+
+      const q3Hat = filledChoices[2] ? forecastProbLogit(q3Series, PREDICT_YEAR, 3) : null;
+      if (q3Hat == null) return null;
+
+      const remAfter2 = clamp(1 - P1Hat - P2Hat, 0, 1);
+      const P3Hat = clamp(remAfter2 * q3Hat, 0, 1);
+      const total = clamp(P1Hat + P2Hat + P3Hat, 0, 1);
+
+      return { P1: P1Hat, P2: P2Hat, P3: P3Hat, total, byChoice: [P1Hat, P2Hat, P3Hat] };
+    }
   
     // --- Helpers for session & device metadata ---
   
@@ -620,6 +772,12 @@
   
         const years = data.years || [];
         const resultChoices = data.choices || [];
+
+        // Append a prediction column (2026) to the rendered table.
+        // Keep a separate copy of historical years for modeling.
+        const historicalYears = years.slice(); // expected: [2020..2024]
+        const yearsWithPred = years.slice();
+        yearsWithPred.push(PREDICT_LABEL);
   
         // Build table
         const table = document.createElement('table');
@@ -631,9 +789,13 @@
         firstHeader.textContent = 'Zone / Date / Group Size';
         headerRow.appendChild(firstHeader);
   
-        years.forEach((year) => {
+        yearsWithPred.forEach((year) => {
           const th = document.createElement('th');
           th.textContent = year.toString();
+        
+          // Add styling class for the predicted column header
+          if (year === PREDICT_LABEL) th.classList.add('pred-col');
+        
           headerRow.appendChild(th);
         });
   
@@ -641,6 +803,9 @@
         table.appendChild(thead);
   
         const tbody = document.createElement('tbody');
+
+        // Compute 2026 predictions for the whole ranked set (uses priority conditioning)
+        const pred = predict2026ForChoiceSet(historicalYears, resultChoices, filledChoices);
   
         // For each filled choice, add a row
         filledChoices.forEach((c, index) => {
@@ -654,38 +819,54 @@
             `${c.label}: ${c.zone} (${prettyPermitDate}), ${c.groupSize} people`;
           row.appendChild(labelCell);
   
-          years.forEach((year) => {
+          yearsWithPred.forEach((year) => {
             const cell = document.createElement('td');
-  
+
+            // Prediction column
+            if (year === PREDICT_LABEL) {
+              cell.classList.add('pred-col');
+            
+              if (!pred || !pred.byChoice || pred.byChoice[index] == null) {
+                cell.textContent = '';
+                cell.classList.add('no-data');
+              } else {
+                cell.textContent = (pred.byChoice[index] * 100).toFixed(1) + '%';
+              }
+            
+              row.appendChild(cell);
+              return;
+            }
+
+            // Historical columns
             if (!backendChoice) {
               cell.textContent = 'N/A';
               cell.className = 'no-data';
               row.appendChild(cell);
               return;
             }
-  
+
             const oddsByYear = backendChoice.odds_by_year || {};
             const compDatesByYear = backendChoice.comp_dates_by_year || {};
-  
+
             const value = oddsByYear[year];
             const compDate = compDatesByYear[year];
-  
+
             if (value === null || value === undefined) {
               cell.textContent = '';
             } else {
               const prettyCompDate = compDate ? formatMmDdYyyyToMmmDd(compDate) : '';
-  
+
               if (prettyCompDate) {
                 cell.innerHTML =
                   (value * 100).toFixed(1) + '%' +
-                  '<br><span style="font-size: 0.9em; color: #666;">' +
+                  '<br><span style="font-size: 0.85em; color: var(--text-muted);">' +
                   prettyCompDate +
                   '</span>';
               } else {
                 cell.textContent = (value * 100).toFixed(1) + '%';
               }
             }
-  
+
             row.appendChild(cell);
           });
   
@@ -703,25 +884,40 @@
         totalsRow.appendChild(totalsLabelCell);
   
         // One cell per year with the summed odds
-        years.forEach((year) => {
+        yearsWithPred.forEach((year) => {
+          const cell = document.createElement('td');
+          cell.style.fontWeight = 'bold';
+
+          if (year === PREDICT_LABEL) {
+            cell.classList.add('pred-col');
+          
+            if (!pred || pred.total == null) {
+              cell.textContent = '';
+              cell.classList.add('no-data');
+            } else {
+              cell.textContent = (pred.total * 100).toFixed(1) + '%';
+            }
+          
+            totalsRow.appendChild(cell);
+            return;
+          }
+
+          // Historical totals
           let total = 0;
-  
-          // Sum odds across all filled choices for this year
+
           filledChoices.forEach((c, index) => {
             const backendChoice = resultChoices[index];
             if (!backendChoice) return;
-  
+
             const oddsByYear = backendChoice.odds_by_year || {};
             const value = oddsByYear[year];
-  
+
             if (value !== null && value !== undefined) {
               total += value;
             }
           });
-  
-          const cell = document.createElement('td');
+
           cell.textContent = (total * 100).toFixed(1) + '%';
-          cell.style.fontWeight = 'bold';
           totalsRow.appendChild(cell);
         });
   
@@ -743,4 +939,5 @@
   </script>
 </body>
 </html>
+
 
