@@ -302,6 +302,29 @@
       pointer-events: none;
       transition: opacity 120ms ease, transform 120ms ease;
     }
+
+    /* Results title tooltip */
+    .results-title {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    .results-title .info-tip {
+      /* reuse existing .info-tip styling; this just ensures it aligns nicely in h2 */
+      transform: translateY(-1px);
+    }
+    
+    .results-title .tooltip {
+      /* Ensure the tooltip isn't uppercased by any header styles */
+      text-transform: none;
+      letter-spacing: normal;
+    
+      /* Position so it drops below the icon */
+      top: calc(100% + 10px);
+      left: 0;
+      right: auto;
+    }
     
     /* Show on hover OR keyboard focus */
     .info-tip:hover .tooltip,
@@ -489,7 +512,20 @@
         <div id="error"></div>
       </form>
 
-      <h2 style="margin-top: 22px;">Results</h2>
+      <h2 style="margin-top: 22px;">
+        <span class="results-title">
+          Results
+          <span class="info-tip" tabindex="0" aria-label="How yearly odds are estimated">
+            ⓘ
+            <span class="tooltip" role="tooltip">
+              <strong>How these odds are estimated</strong><br>
+              The percentages shown for each year are based on simulations using that year’s historical lottery data.<br><br>
+              A value of 10% means the choice won about 100 out of 1,000 simulated lotteries for that year.<br>
+              (The smaller date shown is the comparable date used for that year.)
+            </span>
+          </span>
+        </span>
+      </h2>
       <div id="table-container">
         <!-- Table will be inserted here -->
       </div>
@@ -1045,6 +1081,7 @@
   </script>
 </body>
 </html>
+
 
 
 
