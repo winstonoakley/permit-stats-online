@@ -239,6 +239,83 @@
       background: rgba(56, 189, 248, 0.06);
     }
 
+    /* Prediction header tooltip (hover/focus) */
+    .pred-header .th-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .info-tip {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      border-radius: 999px;
+      font-size: 12px;
+      line-height: 1;
+      cursor: help;
+      user-select: none;
+    
+      border: 1px solid var(--border-subtle);
+      background: rgba(148, 163, 184, 0.12);
+      color: var(--text-main);
+    }
+    
+    .info-tip:focus {
+      outline: 2px solid rgba(56, 189, 248, 0.55);
+      outline-offset: 2px;
+    }
+    
+    .tooltip {
+      position: absolute;
+      top: calc(100% + 10px);
+      right: 0;
+      z-index: 50;
+    
+      width: min(360px, 70vw);
+      padding: 12px 12px;
+      border-radius: 12px;
+    
+      background: rgba(2, 6, 23, 0.98);
+      border: 1px solid var(--border-subtle);
+      box-shadow: 0 18px 45px rgba(0, 0, 0, 0.45);
+    
+      color: var(--text-main);
+      font-size: 12.5px;
+      line-height: 1.35;
+    
+      opacity: 0;
+      transform: translateY(-4px);
+      pointer-events: none;
+      transition: opacity 120ms ease, transform 120ms ease;
+    }
+    
+    /* Show on hover OR keyboard focus */
+    .info-tip:hover .tooltip,
+    .info-tip:focus .tooltip,
+    .info-tip:focus-within .tooltip {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+    
+    /* Optional arrow */
+    .tooltip::before {
+      content: "";
+      position: absolute;
+      top: -6px;
+      right: 10px;
+      width: 10px;
+      height: 10px;
+      transform: rotate(45deg);
+      background: rgba(2, 6, 23, 0.98);
+      border-left: 1px solid var(--border-subtle);
+      border-top: 1px solid var(--border-subtle);
+    }
+
     /* “Comparable date” line in each cell is already a smaller span inline */
     
     /* “No data” cell */
@@ -791,13 +868,34 @@
   
         yearsWithPred.forEach((year) => {
           const th = document.createElement('th');
-          th.textContent = year.toString();
         
-          // Add styling class for the predicted column header
-          if (year === PREDICT_LABEL) th.classList.add('pred-col');
+          // Prediction column header: add tooltip + styling
+          if (year === PREDICT_LABEL) {
+            th.classList.add('pred-col', 'pred-header');
+        
+            // Build label + info icon + tooltip
+            th.innerHTML = `
+              <span class="th-label">
+                ${year.toString()}
+                <span class="info-tip" tabindex="0" aria-label="Prediction explanation">
+                  ⓘ
+                  <span class="tooltip" role="tooltip">
+                    <strong>What this means</strong><br>
+                    These percentages are estimated from simulations.<br><br>
+                    <strong>Example:</strong> 10% means the choice won about 100 out of 1,000 simulated lotteries.<br><br>
+                    Choices are mutually exclusive within each simulation, so the
+                    <strong>Total odds</strong> row is the sum of Choice 1–3.
+                  </span>
+                </span>
+              </span>
+            `;
+          } else {
+            // Normal historical year headers
+            th.textContent = year.toString();
+          }
         
           headerRow.appendChild(th);
-        });
+      });
   
         thead.appendChild(headerRow);
         table.appendChild(thead);
@@ -939,6 +1037,7 @@
   </script>
 </body>
 </html>
+
 
 
 
