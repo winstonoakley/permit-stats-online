@@ -427,6 +427,7 @@ def analytics_summary():
         top_months = sorted(month_counts.items(), key=lambda x: x[1], reverse=True)
 
         return {
+            "db_path": str(ANALYTICS_DB_PATH),
             "total_queries": total_queries,
             "unique_sessions": unique_sessions,
             "avg_queries_per_session": round(avg_queries_per_session, 2),
