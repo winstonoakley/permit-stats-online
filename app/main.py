@@ -369,6 +369,74 @@ def debug_analytics(limit: int = 10):
         "rows": rows,
     }
 
+@app.get("/analytics/summary")
+def analytics_summary():
+    """
+    Returns high-level usage statistics for the tool.
+    """
+    if not ANALYTICS_DB_PATH.exists():
+        return {"error": "analytics.db not found"}
+
+    conn = sqlite3.connect(ANALYTICS_DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+
+    try:
+
+        # Total queries
+        cur.execute("SELECT COUNT(*) AS total_queries FROM query_events")
+        total_queries = cur.fetchone()["total_queries"]
+
+        # Unique sessions (approximate users)
+        cur.execute("SELECT COUNT(DISTINCT session_id) AS unique_sessions FROM query_events")
+        unique_sessions = cur.fetchone()["unique_sessions"]
+
+        avg_queries_per_session = (
+            total_queries / unique_sessions if unique_sessions else 0
+        )
+
+        # Pull all inputs JSON
+        cur.execute("SELECT inputs_json FROM query_events")
+        rows = cur.fetchall()
+
+        zone_counts = {}
+        group_size_counts = {}
+        month_counts = {}
+
+        for row in rows:
+            inputs = json.loads(row["inputs_json"])
+            choices = inputs.get("choices", [])
+
+            for c in choices:
+                zone = c.get("zone")
+                group_size = c.get("group_size")
+                month = c.get("month")
+
+                if zone:
+                    zone_counts[zone] = zone_counts.get(zone, 0) + 1
+
+                if group_size:
+                    group_size_counts[group_size] = group_size_counts.get(group_size, 0) + 1
+
+                if month:
+                    month_counts[month] = month_counts.get(month, 0) + 1
+
+        # Sort counts
+        top_zones = sorted(zone_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+        top_group_sizes = sorted(group_size_counts.items(), key=lambda x: x[1], reverse=True)
+        top_months = sorted(month_counts.items(), key=lambda x: x[1], reverse=True)
+
+        return {
+            "total_queries": total_queries,
+            "unique_sessions": unique_sessions,
+            "avg_queries_per_session": round(avg_queries_per_session, 2),
+            "top_zones": top_zones,
+            "group_size_distribution": top_group_sizes,
+            "month_distribution": top_months,
+        }
+
+    finally:
+        conn.close()
 
 @app.post("/debug/log_test")
 def debug_log_test():
