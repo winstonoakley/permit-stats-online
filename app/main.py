@@ -143,7 +143,7 @@ class ChoiceInput(BaseModel):
 
 class OddsRequest(BaseModel):
     permit_year: int = 2025
-    data_years: List[int] = [2020, 2021, 2022, 2023, 2024]  # or your four years
+    data_years: List[int] = [2022, 2023, 2024, 2025, 2026]
     choices: List[ChoiceInput]  # up to 3
 
     # Optional metadata from the frontend

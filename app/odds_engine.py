@@ -592,6 +592,10 @@ def estimate_odds_for_choice_set(
                 corezoneid = 7
             elif dyear == 2024:
                 corezoneid = 1
+            elif dyear == 2025:
+                corezoneid = 4
+            elif dyear == 2026:
+                corezoneid = 2
             else:
                 corezoneid = 3
 
