@@ -491,9 +491,13 @@ def find_comp_date(permit_date, data_year):
     down_day, down_count = find_closest_weekday(base_date, permit_date.weekday(), -1)
     up_day, up_count = find_closest_weekday(base_date, permit_date.weekday(), 1)
 
-    if down_count <= up_count:
-        return down_day
-    return up_day
+    result = down_day if down_count <= up_count else up_day
+
+    season_end = dt.date(data_year, 10, 31)
+    if result > season_end:
+        result, _ = find_closest_weekday(season_end, permit_date.weekday(), -1)
+
+    return result
 
 # Find the number of weekday within the month
 def daterange(start_date, end_date):
@@ -621,18 +625,13 @@ def estimate_odds_for_choice_set(
 
                 # Core vs non-core logic (C1 only)
                 if zid == corezoneid:
-                    # Use core odds function
                     odds_value = coreodds1(did, c.group_size)
+                    odds_by_year[dyear] = float(odds_value) if odds_value is not None else None
                 else:
-                    # Use exact C1 odds if available
                     r = checkexact(1, zid, did, c.group_size, 0, 0, 0, 0, 0, 0)
-                    odds_value = r[0][0] if r else 0.0
-
-                odds_by_year[dyear] = float(odds_value)
+                    odds_by_year[dyear] = float(r[0][0]) if r else None
             except Exception:
-                # If something goes wrong, be safe and set 0 for that year
-                odds_by_year[dyear] = 0.0
-                # comp_dates_by_year[dyear] may already be set; if not, keep None
+                odds_by_year[dyear] = None
                 comp_dates_by_year.setdefault(dyear, None)
             finally:
                 conn.close()

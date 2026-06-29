@@ -356,6 +356,73 @@
       color: var(--text-muted);
       font-style: italic;
     }
+
+    /* Prediction results (line-based layout) */
+    .pred-results {
+      width: fit-content;
+      margin: 0 auto;
+      min-width: 260px;
+      background: radial-gradient(circle at top, rgba(56, 189, 248, 0.13), transparent 70%),
+                  var(--card-bg);
+      border: 1px solid rgba(56, 189, 248, 0.55);
+      border-radius: var(--radius-lg);
+      padding: 20px 32px 18px 32px;
+      box-shadow:
+        0 0 18px rgba(56, 189, 248, 0.18),
+        0 0 48px rgba(56, 189, 248, 0.08),
+        0 18px 45px rgba(15, 23, 42, 0.7);
+    }
+
+    .pred-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .pred-title .tooltip {
+      left: 50%;
+      transform: translateX(-50%);
+      right: auto;
+    }
+
+    .pred-title .tooltip::before {
+      left: 50%;
+      right: auto;
+      transform: translateX(-50%) rotate(45deg);
+    }
+
+    .pred-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 28px;
+      padding: 6px 0;
+      border-bottom: 1px solid rgba(51, 65, 85, 0.5);
+      font-size: 0.9rem;
+    }
+
+    .pred-row:last-child {
+      border-bottom: none;
+    }
+
+    .pred-row.pred-total {
+      margin-top: 4px;
+      font-weight: 700;
+    }
+
+    .pred-value {
+      color: var(--accent);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .pred-total .pred-value {
+      font-size: 1rem;
+    }
     
     /* Responsive tweaks */
     @media (max-width: 720px) {
@@ -414,7 +481,7 @@
           </div>
           <div>
             <label>Date 1:
-              <input type="date" id="date1" min="2026-05-15" max="2026-10-31" />
+              <input type="date" id="date1" min="2027-05-15" max="2027-10-31" />
             </label>
           </div>
           <div>
@@ -451,7 +518,7 @@
           </div>
           <div>
             <label>Date 2:
-              <input type="date" id="date2" min="2026-05-15" max="2026-10-31" />
+              <input type="date" id="date2" min="2027-05-15" max="2027-10-31" />
             </label>
           </div>
           <div>
@@ -488,7 +555,7 @@
           </div>
           <div>
             <label>Date 3:
-              <input type="date" id="date3" min="2026-05-15" max="2026-10-31" />
+              <input type="date" id="date3" min="2027-05-15" max="2027-10-31" />
             </label>
           </div>
           <div>
@@ -512,23 +579,27 @@
         <div id="error"></div>
       </form>
 
-      <h2 style="margin-top: 22px;">
+      <div id="prediction-container" style="margin-top: 22px;">
+        <!-- 2027 prediction table inserted here -->
+      </div>
+
+      <h2 id="history-title" style="margin-top: 28px; display: none;">
         <span class="results-title">
-          Results
+          Historical Results
           <span class="info-tip" tabindex="0" aria-label="How yearly odds are estimated">
             ⓘ
             <span class="tooltip" role="tooltip">
               <strong>How these odds are estimated:</strong><br>
               The percentages shown for each year are based on simulated lotteries using that year’s historical application data.
               For example, value of 10% means the choice won 100 times out of 1,000 simulated lotteries for that year.<br>
-              The smaller date shown is the comparable date used for that year 
+              The smaller date shown is the comparable date used for that year
               (the date that matches the day of week, month, and week in the month of your choice).
             </span>
           </span>
         </span>
       </h2>
-      <div id="table-container">
-        <!-- Table will be inserted here -->
+      <div id="history-container">
+        <!-- Historical table inserted here -->
       </div>
     </div> <!-- end .card -->
   </div> <!-- end .main-wrapper -->
@@ -540,8 +611,19 @@
     // Prediction helpers (2026)
     // -------------------------
 
-    const PREDICT_YEAR = 2026;
+    const PREDICT_YEAR = 2027;
     const PREDICT_LABEL = `${PREDICT_YEAR} prediction`;
+    const PERMIT_YEAR = 2027;
+
+    // Snap the year back to PERMIT_YEAR whenever a date input changes.
+    function enforcePermitYear(el) {
+      if (!el.value) return;
+      const [, mm, dd] = el.value.split('-');
+      el.value = `${PERMIT_YEAR}-${mm}-${dd}`;
+    }
+    ['date1', 'date2', 'date3'].forEach(id => {
+      document.getElementById(id).addEventListener('change', e => enforcePermitYear(e.target));
+    });
 
     function clamp(x, lo, hi) {
       return Math.max(lo, Math.min(hi, x));
@@ -745,14 +827,17 @@
   
     const form = document.getElementById('stats-form');
     const errorDiv = document.getElementById('error');
-    const tableContainer = document.getElementById('table-container');
+    const predictionContainer = document.getElementById('prediction-container');
+    const historyContainer = document.getElementById('history-container');
     const submitButton = document.getElementById('submit-button');
   
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
   
       errorDiv.textContent = '';
-      tableContainer.innerHTML = 'Building table...';
+      predictionContainer.innerHTML = 'Building table...';
+      historyContainer.innerHTML = '';
+      document.getElementById('history-title').style.display = 'none';
   
       // Collect all choices from the form
       const choices = [
@@ -783,7 +868,8 @@
   
       if (filledChoices.length === 0) {
         errorDiv.textContent = 'Please fill in at least one zone/date choice with a group size.';
-        tableContainer.innerHTML = '';
+        predictionContainer.innerHTML = '';
+        historyContainer.innerHTML = '';
         return;
       }
 
@@ -802,7 +888,8 @@
           errorDiv.textContent =
             `Invalid choices: ${first} and ${c.label} have the same zone and date (${zone}, ${formatIsoDateToMmmDd(date)}). ` +
             `The lottery does not allow duplicate zone/date selections.`;
-          tableContainer.innerHTML = '';
+          predictionContainer.innerHTML = '';
+        historyContainer.innerHTML = '';
           return;
         }
       
@@ -810,14 +897,15 @@
       }
   
       // Extra safety: ensure dates are within the allowed lottery window
-      const minDate = new Date('2026-05-15');
-      const maxDate = new Date('2026-10-31');
-      
+      const minDate = new Date('2027-05-15');
+      const maxDate = new Date('2027-10-31');
+
       for (const c of filledChoices) {
         const d = new Date(c.date);
         if (isNaN(d.getTime()) || d < minDate || d > maxDate) {
-          errorDiv.textContent = 'Dates must be between May 15 and Oct 31, 2026.';
-          tableContainer.innerHTML = '';
+          errorDiv.textContent = 'Dates must be between May 15 and Oct 31, 2027.';
+          predictionContainer.innerHTML = '';
+        historyContainer.innerHTML = '';
           return;
         }
       }
@@ -827,15 +915,15 @@
         const size = parseInt(c.groupSizeValue, 10);
         if (!c.groupSizeValue || isNaN(size) || size < 1) {
           errorDiv.textContent = `Please enter a valid group size (at least 1) for ${c.label}.`;
-          tableContainer.innerHTML = '';
+          predictionContainer.innerHTML = '';
+        historyContainer.innerHTML = '';
           return;
         }
         c.groupSize = size;
       }
   
       // Use the year from the first filled choice's date as the permit year
-      const [permitYearStr] = filledChoices[0].date.split('-');
-      const permitYear = parseInt(permitYearStr, 10);
+      const permitYear = 2027;
   
       // Historical years used by your databases
       const dataYears = [2022, 2023, 2024, 2025, 2026];
@@ -888,7 +976,8 @@
   
         if (!response.ok) {
           errorDiv.textContent = 'Error from server: ' + response.status + ' ' + response.statusText;
-          tableContainer.innerHTML = '';
+          predictionContainer.innerHTML = '';
+        historyContainer.innerHTML = '';
           return;
         }
   
@@ -897,183 +986,184 @@
         const years = data.years || [];
         const resultChoices = data.choices || [];
 
-        // Append a prediction column (2026) to the rendered table.
-        // Keep a separate copy of historical years for modeling.
-        const historicalYears = years.slice(); // expected: [2020..2024]
-        const yearsWithPred = years.slice();
-        yearsWithPred.push(PREDICT_LABEL);
-  
-        // Build table
-        const table = document.createElement('table');
-  
-        // Header row
-        const thead = document.createElement('thead');
-        const headerRow = document.createElement('tr');
-        const firstHeader = document.createElement('th');
-        firstHeader.textContent = 'Zone / Date / Group Size';
-        headerRow.appendChild(firstHeader);
-  
-        yearsWithPred.forEach((year) => {
-          const th = document.createElement('th');
-        
-          // Prediction column header: add tooltip + styling
-          if (year === PREDICT_LABEL) {
-            th.classList.add('pred-col', 'pred-header');
-        
-            // Build label + info icon + tooltip
-            th.innerHTML = `
-              <span class="th-label">
-                ${year.toString()}
-                <span class="info-tip" tabindex="0" aria-label="Prediction explanation">
-                  ⓘ
-                  <span class="tooltip" role="tooltip">
-                    Odds are predicted using recent trends 
-                    and adjusted to reflect how the lottery 
-                    processes first, second, and third choices.
-                  </span>
-                </span>
-              </span>
-            `;
-          } else {
-            // Normal historical year headers
-            th.textContent = year.toString();
-          }
-        
-          headerRow.appendChild(th);
-      });
-  
-        thead.appendChild(headerRow);
-        table.appendChild(thead);
-  
-        const tbody = document.createElement('tbody');
+        const historicalYears = years.slice();
 
-        // Compute 2026 predictions for the whole ranked set (uses priority conditioning)
+        // Compute predictions for the whole ranked set (uses priority conditioning)
         const pred = predict2026ForChoiceSet(historicalYears, resultChoices, filledChoices);
-  
-        // For each filled choice, add a row
+
+        // Pre-compute priority-conditioned odds for each historical year
+        const conditionedByYear = {};
+        for (const year of historicalYears) {
+          const raw = filledChoices.map((_, idx) => {
+            const bc = resultChoices[idx];
+            if (!bc) return null;
+            const v = (bc.odds_by_year || {})[year];
+            return (v == null) ? null : v;
+          });
+          const conditioned = [];
+          let remaining = 1.0;
+          for (let i = 0; i < raw.length; i++) {
+            if (raw[i] == null) {
+              conditioned.push(null);
+            } else {
+              const awarded = remaining * raw[i];
+              conditioned.push(awarded);
+              remaining = Math.max(0, remaining - awarded);
+            }
+          }
+          conditionedByYear[year] = conditioned;
+        }
+
+        // ── Prediction results (line layout) ─────────────────────────
+        const predDiv = document.createElement('div');
+        predDiv.className = 'pred-results';
+
+        const predTitle = document.createElement('div');
+        predTitle.className = 'pred-title';
+        predTitle.innerHTML = `
+          Prediction Results
+          <span class="info-tip" tabindex="0" aria-label="Prediction explanation">
+            ⓘ
+            <span class="tooltip" role="tooltip">
+              These are the estimated odds of winning each of your choices.
+              Odds are predicted using recent trends and adjusted to reflect
+              how the lottery processes first, second, and third choices.
+            </span>
+          </span>
+        `;
+        predDiv.appendChild(predTitle);
+
+        filledChoices.forEach((c, index) => {
+          const row = document.createElement('div');
+          row.className = 'pred-row';
+
+          const label = document.createElement('span');
+          label.textContent = c.label;
+
+          const valueEl = document.createElement('span');
+          valueEl.className = 'pred-value';
+          if (!pred || !pred.byChoice || pred.byChoice[index] == null) {
+            valueEl.innerHTML = 'Data<br>Unavailable';
+            valueEl.classList.add('no-data');
+          } else {
+            valueEl.textContent = (pred.byChoice[index] * 100).toFixed(1) + '%';
+          }
+
+          row.appendChild(label);
+          row.appendChild(valueEl);
+          predDiv.appendChild(row);
+        });
+
+        const totalRow = document.createElement('div');
+        totalRow.className = 'pred-row pred-total';
+
+        const totalLabel = document.createElement('span');
+        totalLabel.textContent = 'Total odds of winning any choice';
+
+        const totalValueEl = document.createElement('span');
+        totalValueEl.className = 'pred-value';
+        if (!pred || pred.total == null) {
+          totalValueEl.innerHTML = 'Data<br>Unavailable';
+          totalValueEl.classList.add('no-data');
+        } else {
+          totalValueEl.textContent = (pred.total * 100).toFixed(1) + '%';
+        }
+
+        totalRow.appendChild(totalLabel);
+        totalRow.appendChild(totalValueEl);
+        predDiv.appendChild(totalRow);
+
+        predictionContainer.innerHTML = '';
+        predictionContainer.appendChild(predDiv);
+
+        // ── Historical table ──────────────────────────────────────────
+        const histTable = document.createElement('table');
+
+        const histThead = document.createElement('thead');
+        const histHeaderRow = document.createElement('tr');
+        const histFirstTh = document.createElement('th');
+        histFirstTh.textContent = 'Zone / Date / Group Size';
+        histHeaderRow.appendChild(histFirstTh);
+        historicalYears.forEach((year) => {
+          const th = document.createElement('th');
+          th.textContent = year.toString();
+          histHeaderRow.appendChild(th);
+        });
+        histThead.appendChild(histHeaderRow);
+        histTable.appendChild(histThead);
+
+        const histTbody = document.createElement('tbody');
+
         filledChoices.forEach((c, index) => {
           const backendChoice = resultChoices[index];
-  
           const row = document.createElement('tr');
-  
+
           const labelCell = document.createElement('td');
-          const prettyPermitDate = formatIsoDateToMmmDd(c.date);
           labelCell.textContent =
-            `${c.label}: ${c.zone} (${prettyPermitDate}), ${c.groupSize} people`;
+            `${c.label}: ${c.zone} (${formatIsoDateToMmmDd(c.date)}), ${c.groupSize} people`;
           row.appendChild(labelCell);
-  
-          yearsWithPred.forEach((year) => {
+
+          historicalYears.forEach((year) => {
             const cell = document.createElement('td');
 
-            // Prediction column
-            if (year === PREDICT_LABEL) {
-              cell.classList.add('pred-col');
-            
-              if (!pred || !pred.byChoice || pred.byChoice[index] == null) {
-                cell.textContent = '';
-                cell.classList.add('no-data');
-              } else {
-                cell.textContent = (pred.byChoice[index] * 100).toFixed(1) + '%';
-              }
-            
-              row.appendChild(cell);
-              return;
-            }
-
-            // Historical columns
             if (!backendChoice) {
-              cell.textContent = 'N/A';
-              cell.className = 'no-data';
+              cell.innerHTML = 'Data<br>Unavailable';
+              cell.classList.add('no-data');
               row.appendChild(cell);
               return;
             }
 
-            const oddsByYear = backendChoice.odds_by_year || {};
             const compDatesByYear = backendChoice.comp_dates_by_year || {};
-
-            const value = oddsByYear[year];
+            const value = (conditionedByYear[year] || [])[index] ?? null;
             const compDate = compDatesByYear[year];
 
             if (value === null || value === undefined) {
-              cell.textContent = '';
+              cell.innerHTML = 'Data<br>Unavailable';
+              cell.classList.add('no-data');
             } else {
               const prettyCompDate = compDate ? formatMmDdYyyyToMmmDd(compDate) : '';
-
               if (prettyCompDate) {
                 cell.innerHTML =
                   (value * 100).toFixed(1) + '%' +
                   '<br><span style="font-size: 0.85em; color: var(--text-muted);">' +
-                  prettyCompDate +
-                  '</span>';
+                  prettyCompDate + '</span>';
               } else {
                 cell.textContent = (value * 100).toFixed(1) + '%';
               }
             }
-
             row.appendChild(cell);
           });
-  
-          tbody.appendChild(row);
+
+          histTbody.appendChild(row);
         });
-  
-        // Add a totals row: sum of odds across all choices for each year
-        const totalsRow = document.createElement('tr');
-        totalsRow.classList.add('totals-row');
-  
-        // Label cell
-        const totalsLabelCell = document.createElement('td');
-        totalsLabelCell.textContent = 'Total odds of winning any choice';
-        totalsLabelCell.style.fontWeight = 'bold';
-        totalsRow.appendChild(totalsLabelCell);
-  
-        // One cell per year with the summed odds
-        yearsWithPred.forEach((year) => {
+
+        const histTotalsRow = document.createElement('tr');
+        histTotalsRow.classList.add('totals-row');
+        const histTotalsLabel = document.createElement('td');
+        histTotalsLabel.textContent = 'Total odds of winning any choice';
+        histTotalsLabel.style.fontWeight = 'bold';
+        histTotalsRow.appendChild(histTotalsLabel);
+
+        historicalYears.forEach((year) => {
           const cell = document.createElement('td');
           cell.style.fontWeight = 'bold';
-
-          if (year === PREDICT_LABEL) {
-            cell.classList.add('pred-col');
-          
-            if (!pred || pred.total == null) {
-              cell.textContent = '';
-              cell.classList.add('no-data');
-            } else {
-              cell.textContent = (pred.total * 100).toFixed(1) + '%';
-            }
-          
-            totalsRow.appendChild(cell);
-            return;
-          }
-
-          // Historical totals
           let total = 0;
-
-          filledChoices.forEach((c, index) => {
-            const backendChoice = resultChoices[index];
-            if (!backendChoice) return;
-
-            const oddsByYear = backendChoice.odds_by_year || {};
-            const value = oddsByYear[year];
-
-            if (value !== null && value !== undefined) {
-              total += value;
-            }
-          });
-
+          (conditionedByYear[year] || []).forEach((v) => { if (v != null) total += v; });
           cell.textContent = (total * 100).toFixed(1) + '%';
-          totalsRow.appendChild(cell);
+          histTotalsRow.appendChild(cell);
         });
-  
-        tbody.appendChild(totalsRow);
-  
-        table.appendChild(tbody);
-        tableContainer.innerHTML = '';
-        tableContainer.appendChild(table);
+
+        histTbody.appendChild(histTotalsRow);
+        histTable.appendChild(histTbody);
+        historyContainer.innerHTML = '';
+        historyContainer.appendChild(histTable);
+        document.getElementById('history-title').style.display = '';
   
       } catch (err) {
         console.error(err);
         errorDiv.textContent = 'Something went wrong while contacting the server.';
-        tableContainer.innerHTML = '';
+        predictionContainer.innerHTML = '';
+        historyContainer.innerHTML = '';
       } finally {
         submitButton.disabled = false;
         submitButton.textContent = 'Fetch Results';

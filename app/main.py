@@ -251,7 +251,7 @@ def estimate_odds(payload: OddsRequest, request: Request):
 
     # Folder where your odds_YYYY.db files live
     # Use environment variable if set, otherwise fall back to local folder
-    db_dir = os.getenv("ODDS_DB_DIR") or r"C:\permit-stats-backend-starter\odds_databases"
+    db_dir = os.getenv("ODDS_DB_DIR") or os.path.join(BASE_DIR, "odds_databases")
 
     # ---- Build "inputs" dict for logging ----
     inputs = {
