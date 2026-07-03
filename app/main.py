@@ -9,18 +9,26 @@ import json
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List
-from .odds_engine import Choice, estimate_odds_for_choice_set
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from .odds_engine import Choice, estimate_odds_for_choice_set, estimate_season_odds
 
 
+limiter = Limiter(key_func=get_remote_address)
 app = FastAPI()
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# Allow our web page to make requests to this backend (for now, allow everything)
+# Restrict CORS to the deployment origin; fall back to * for local dev.
+# Set ALLOWED_ORIGIN env var in production (e.g. "https://yourdomain.com").
+_allowed_origin = os.getenv("ALLOWED_ORIGIN", "*")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # later we can tighten this
+    allow_origins=[_allowed_origin],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["POST", "GET"],
+    allow_headers=["Content-Type"],
 )
 
 DB_PATH = Path("stats.db")
@@ -158,6 +166,12 @@ class OddsResponse(BaseModel):
     years: List[int]
     choices: List[dict]  # keep loose for now; can tighten later
 
+class HeatmapRequest(BaseModel):
+    zone: str
+    group_size: int = Field(ge=1, le=8)
+    permit_year: int = 2027
+    data_years: List[int] = [2022, 2023, 2024, 2025, 2026]
+
 
 # --- Helper function to query the database ---
 
@@ -237,6 +251,7 @@ def get_stats(request: StatsRequest):
     )
 
 @app.post("/estimate_odds", response_model=OddsResponse)
+@limiter.limit("30/minute")
 def estimate_odds(payload: OddsRequest, request: Request):
     # Convert Pydantic models to dataclass Choices
     choices = [
@@ -311,6 +326,26 @@ def estimate_odds(payload: OddsRequest, request: Request):
 
     # ---- Return the response as before ----
     return OddsResponse(**result)
+
+
+@app.post("/heatmap_odds")
+@limiter.limit("15/minute")
+def heatmap_odds(payload: HeatmapRequest, request: Request):
+    """
+    Returns first-choice odds for a single zone/group size for every date in
+    the lottery season, keyed by permit date, across all data years.
+    Used by the frontend heatmap calendar.
+    """
+    db_dir = os.getenv("ODDS_DB_DIR") or os.path.join(BASE_DIR, "odds_databases")
+
+    result = estimate_season_odds(
+        zone=payload.zone,
+        group_size=payload.group_size,
+        permit_year=payload.permit_year,
+        data_years=payload.data_years,
+        db_dir=db_dir,
+    )
+    return result
 
 
 @app.get("/debug/analytics")

@@ -526,6 +526,103 @@ def dateconv(datenum):
         dstr = '0' + dstr
     return dstr
 
+def estimate_season_odds(
+    zone: str,
+    group_size: int,
+    permit_year: int,
+    data_years: List[int],
+    db_dir: str,
+) -> Dict[str, Any]:
+    """
+    Compute first-choice odds for a single zone/group size for every date in
+    the lottery season (May 15 - Oct 31 of permit_year), across data_years.
+
+    Opens each year's database once and iterates over all season dates,
+    caching by comparable date (many permit dates share one comp date).
+
+    Returns:
+        {
+          "zone": ...,
+          "group_size": ...,
+          "permit_year": ...,
+          "data_years": [...],
+          "odds_by_date": {
+            "YYYY-MM-DD": {year: float or None, ...},
+            ...
+          }
+        }
+    """
+    global cur, corezoneid
+
+    season_start = dt.date(permit_year, 5, 15)
+    season_end = dt.date(permit_year, 10, 31)
+    season_dates = [
+        season_start + dt.timedelta(n)
+        for n in range((season_end - season_start).days + 1)
+    ]
+
+    odds_by_date: Dict[str, Dict[int, Any]] = {
+        d.isoformat(): {} for d in season_dates
+    }
+
+    for dyear in data_years:
+        db_path = os.path.join(db_dir, f"odds_{dyear}.db")
+        if not os.path.exists(db_path):
+            for d in season_dates:
+                odds_by_date[d.isoformat()][dyear] = None
+            continue
+
+        conn = sqlite3.connect(db_path)
+        cur = conn.cursor()
+
+        try:
+            cur.execute("SELECT zone_id FROM zone WHERE zonename = 'Core'")
+            row = cur.fetchone()
+            corezoneid = row[0] if row else None
+
+            try:
+                zid = findzoneid(zone)
+            except Exception:
+                for d in season_dates:
+                    odds_by_date[d.isoformat()][dyear] = None
+                continue
+
+            comp_cache: Dict[str, Any] = {}
+            for d in season_dates:
+                date_str = None
+                try:
+                    comp_date = find_comp_date(d, dyear)
+                    date_str = comp_date.strftime('%m-%d-%Y')
+
+                    if date_str in comp_cache:
+                        odds_by_date[d.isoformat()][dyear] = comp_cache[date_str]
+                        continue
+
+                    did = finddateid(date_str)
+                    if zid == corezoneid:
+                        v = coreodds1(did, group_size)
+                        val = float(v) if v is not None else None
+                    else:
+                        r = checkexact(1, zid, did, group_size, 0, 0, 0, 0, 0, 0)
+                        val = float(r[0][0]) if r else None
+                except Exception:
+                    val = None
+
+                if date_str is not None:
+                    comp_cache[date_str] = val
+                odds_by_date[d.isoformat()][dyear] = val
+        finally:
+            conn.close()
+
+    return {
+        "zone": zone,
+        "group_size": group_size,
+        "permit_year": permit_year,
+        "data_years": data_years,
+        "odds_by_date": odds_by_date,
+    }
+
+
 def estimate_odds_for_choice_set(
     permit_year: int,
     choices: List[Choice],
@@ -589,20 +686,6 @@ def estimate_odds_for_choice_set(
         comp_dates_by_year: Dict[int, str] = {}
 
         for dyear in data_years:
-            # Set corezoneid as in your original script
-            if dyear == 2022:
-                corezoneid = 4
-            elif dyear == 2023:
-                corezoneid = 7
-            elif dyear == 2024:
-                corezoneid = 1
-            elif dyear == 2025:
-                corezoneid = 4
-            elif dyear == 2026:
-                corezoneid = 2
-            else:
-                corezoneid = 3
-
             db_name = f"odds_{dyear}.db"
             db_path = os.path.join(db_dir, db_name)
             if not os.path.exists(db_path):
@@ -612,6 +695,11 @@ def estimate_odds_for_choice_set(
 
             conn = sqlite3.connect(db_path)
             cur = conn.cursor()
+
+            # Look up Core zone_id from the database rather than hardcoding it
+            cur.execute("SELECT zone_id FROM zone WHERE zonename = 'Core'")
+            row = cur.fetchone()
+            corezoneid = row[0] if row else None
             try:
                 # Comparable date for this permit date in the given data_year
                 permit_date = dt.date(permit_year, c.month, c.day)

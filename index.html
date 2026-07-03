@@ -17,13 +17,13 @@
       --radius-lg: 16px;
       --shadow-soft: 0 18px 45px rgba(15, 23, 42, 0.7);
     }
-    
+
     *,
     *::before,
     *::after {
       box-sizing: border-box;
     }
-    
+
     body {
       margin: 0;
       min-height: 100vh;
@@ -34,14 +34,14 @@
       justify-content: center;
       padding: 32px 16px;
     }
-    
+
     /* Overall layout container */
     .main-wrapper {
         margin-left: auto;
         margin-right: auto;
         max-width: 900px;
     }
-    
+
     /* Header */
     h1 {
       margin: 0 0 4px 0;
@@ -49,14 +49,14 @@
       text-align: center;
       letter-spacing: 0.03em;
     }
-    
+
     .subtitle {
       margin: 0 0 24px 0;
       font-size: 0.95rem;
       color: var(--text-muted);
       text-align: center;
     }
-    
+
     /* Cards */
     .card {
       background: radial-gradient(circle at top left, rgba(56, 189, 248, 0.09), transparent 50%),
@@ -67,14 +67,14 @@
       border: 1px solid rgba(15, 23, 42, 0.9);
       margin-bottom: 20px;
     }
-    
+
     /* Form layout */
     #stats-form {
       display: flex;
       flex-direction: column;
       gap: 12px;
     }
-    
+
     .choice-title {
       margin-top: 10px;
       font-size: 0.9rem;
@@ -82,23 +82,26 @@
       text-transform: uppercase;
       color: var(--accent);
     }
-    
+
     .choice-row {
       display: grid;
-      grid-template-columns: 1.3fr 1.3fr 0.8fr;
+      /* Columns fit their content: zone, group size, date + heatmap button */
+      grid-template-columns: 160px 110px 190px;
+      justify-content: start;
       gap: 10px;
       margin-top: 4px;
     }
-    
+
     label {
       display: block;
       font-size: 0.8rem;
       font-weight: 600;
       color: var(--text-muted);
     }
-    
+
     /* Inputs & selects */
     input[type="date"],
+    input[type="text"],
     input[type="number"],
     select {
       width: 100%;
@@ -112,20 +115,22 @@
       outline: none;
       transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
     }
-    
+
     input[type="date"]::placeholder,
+    input[type="text"]::placeholder,
     input[type="number"]::placeholder {
       color: var(--text-muted);
     }
-    
+
     input[type="date"]:focus,
+    input[type="text"]:focus,
     input[type="number"]:focus,
     select:focus {
       border-color: var(--accent-strong);
       box-shadow: 0 0 0 1px var(--accent), 0 0 0 6px rgba(56, 189, 248, 0.12);
       background-color: #020617;
     }
-    
+
     /* Button */
     button[type="submit"] {
       align-self: flex-start;
@@ -142,42 +147,42 @@
       box-shadow: 0 14px 30px rgba(56, 189, 248, 0.35);
       transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease;
     }
-    
+
     button[type="submit"]:hover:not(:disabled) {
       transform: translateY(-1px);
       box-shadow: 0 20px 40px rgba(56, 189, 248, 0.45);
       filter: brightness(1.05);
     }
-    
+
     button[type="submit"]:active:not(:disabled) {
       transform: translateY(0);
       box-shadow: 0 10px 20px rgba(56, 189, 248, 0.25);
     }
-    
+
     button[type="submit"]:disabled {
       opacity: 0.7;
       cursor: not-allowed;
     }
-    
+
     /* Error text */
     #error {
       color: var(--danger);
       margin-top: 8px;
       font-size: 0.8rem;
     }
-    
+
     /* Results card */
     .card h2 {
       margin: 0 0 8px 0;
       font-size: 1.1rem;
     }
-    
+
     #table-container {
       margin-top: 6px;
       overflow-x: auto;
       overflow-y: visible; /* prevent tooltip clipping */
     }
-    
+
     /* Table styling */
     table {
       width: 100%;
@@ -187,7 +192,7 @@
       overflow: visible; /* allow tooltips to escape the table box */
       border: 1px solid var(--border-subtle);
     }
-    
+
     th,
     td {
       padding: 8px 10px;
@@ -195,12 +200,12 @@
       text-align: center;
       border-bottom: 1px solid rgba(51, 65, 85, 0.9);
     }
-    
+
     th:first-child,
     td:first-child {
       text-align: left;
     }
-    
+
     th {
       background: linear-gradient(to bottom, rgba(15, 23, 42, 0.9), rgba(15, 23, 42, 1));
       font-size: 0.8rem;
@@ -213,28 +218,28 @@
       text-transform: none;
       letter-spacing: 0.03em; /* optional: softer than 0.08em */
     }
-    
+
     tbody tr:nth-child(odd):not(.totals-row) {
       background-color: rgba(15, 23, 42, 0.7);
     }
-    
+
     tbody tr:nth-child(even):not(.totals-row) {
       background-color: rgba(15, 23, 42, 0.95);
     }
-    
+
     tbody tr:hover:not(.totals-row) {
       background-color: rgba(30, 64, 175, 0.35);
     }
-    
+
     /* Totals row styling */
     .totals-row {
       background: var(--accent-soft);
     }
-    
+
     .totals-row td {
       font-weight: 600;
     }
-    
+
     .totals-row td:first-child {
       color: var(--accent-strong);
     }
@@ -251,7 +256,7 @@
       align-items: center;
       gap: 8px;
     }
-    
+
     .info-tip {
       position: relative;
       display: inline-flex;
@@ -264,39 +269,39 @@
       line-height: 1;
       cursor: help;
       user-select: none;
-    
+
       border: 1px solid var(--border-subtle);
       background: rgba(148, 163, 184, 0.12);
       color: var(--text-main);
     }
-    
+
     .info-tip:focus {
       outline: 2px solid rgba(56, 189, 248, 0.55);
       outline-offset: 2px;
     }
-    
+
     .tooltip {
       /* Do NOT inherit TH uppercase styling */
       text-transform: none;
       letter-spacing: normal;
-    
+
       position: absolute;
       top: calc(100% + 10px);
       right: 0;
       z-index: 50;
-    
+
       width: min(360px, 70vw);
       padding: 12px 12px;
       border-radius: 12px;
-    
+
       background: rgba(2, 6, 23, 0.98);
       border: 1px solid var(--border-subtle);
       box-shadow: 0 18px 45px rgba(0, 0, 0, 0.45);
-    
+
       color: var(--text-main);
       font-size: 12.5px;
       line-height: 1.35;
-    
+
       opacity: 0;
       transform: translateY(-4px);
       pointer-events: none;
@@ -309,23 +314,23 @@
       align-items: center;
       gap: 10px;
     }
-    
+
     .results-title .info-tip {
       /* reuse existing .info-tip styling; this just ensures it aligns nicely in h2 */
       transform: translateY(-1px);
     }
-    
+
     .results-title .tooltip {
       /* Ensure the tooltip isn't uppercased by any header styles */
       text-transform: none;
       letter-spacing: normal;
-    
+
       /* Position so it drops below the icon */
       top: calc(100% + 10px);
       left: 0;
       right: auto;
     }
-    
+
     /* Show on hover OR keyboard focus */
     .info-tip:hover .tooltip,
     .info-tip:focus .tooltip,
@@ -334,7 +339,7 @@
       transform: translateY(0);
       pointer-events: auto;
     }
-    
+
     /* Optional arrow */
     .tooltip::before {
       content: "";
@@ -350,7 +355,7 @@
     }
 
     /* “Comparable date” line in each cell is already a smaller span inline */
-    
+
     /* “No data” cell */
     .no-data {
       color: var(--text-muted);
@@ -423,21 +428,223 @@
     .pred-total .pred-value {
       font-size: 1rem;
     }
-    
+
+    /* Heatmap calendar */
+    .date-input-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* Date fields are read-only; the heatmap calendar is the only date picker. */
+    .date-input-row input {
+      flex: 1;
+      min-width: 0;
+      cursor: pointer;
+    }
+
+    .heatmap-btn {
+      margin-top: 4px;
+      padding: 7px 9px;
+      border-radius: 9px;
+      border: 1px solid var(--border-subtle);
+      background-color: rgba(15, 23, 42, 0.9);
+      font-size: 0.95rem;
+      line-height: 1;
+      cursor: pointer;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .heatmap-btn:hover {
+      border-color: var(--accent-strong);
+      box-shadow: 0 0 0 1px var(--accent);
+    }
+
+    .heatmap-popover[hidden] {
+      display: none;
+    }
+
+    .heatmap-popover {
+      position: absolute;
+      z-index: 100;
+      width: min(380px, 94vw);
+      background: radial-gradient(circle at top left, rgba(56, 189, 248, 0.09), transparent 50%),
+                  var(--card-bg);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      box-shadow: 0 18px 45px rgba(0, 0, 0, 0.55);
+      padding: 18px 18px 16px 18px;
+    }
+
+    .hm-close {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      width: 28px;
+      height: 28px;
+      border-radius: 999px;
+      border: 1px solid var(--border-subtle);
+      background: rgba(148, 163, 184, 0.12);
+      color: var(--text-main);
+      font-size: 13px;
+      line-height: 1;
+      cursor: pointer;
+    }
+
+    .hm-close:hover {
+      border-color: var(--accent-strong);
+    }
+
+    .hm-header {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .hm-month-label {
+      font-size: 1.05rem;
+      font-weight: 700;
+      min-width: 150px;
+      text-align: center;
+    }
+
+    .hm-nav {
+      width: 30px;
+      height: 30px;
+      border-radius: 999px;
+      border: 1px solid var(--border-subtle);
+      background: rgba(148, 163, 184, 0.12);
+      color: var(--text-main);
+      font-size: 16px;
+      line-height: 1;
+      cursor: pointer;
+    }
+
+    .hm-nav:hover:not(:disabled) {
+      border-color: var(--accent-strong);
+    }
+
+    .hm-nav:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+
+    .hm-weekdays {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 6px;
+      margin-bottom: 6px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-align: center;
+    }
+
+    .hm-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 6px;
+    }
+
+    .hm-day {
+      aspect-ratio: 1 / 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: none;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: transform 0.1s ease, filter 0.1s ease;
+    }
+
+    .hm-day:hover:not(:disabled) {
+      transform: scale(1.08);
+      filter: brightness(1.05);
+    }
+
+    .hm-green {
+      background: #6ee7a8;
+      color: #14532d;
+    }
+
+    .hm-orange {
+      background: #fdba74;
+      color: #7c2d12;
+    }
+
+    .hm-red {
+      background: #fb9ba4;
+      color: #7f1d1d;
+    }
+
+    .hm-nodata {
+      background: rgba(148, 163, 184, 0.18);
+      color: var(--text-muted);
+    }
+
+    .hm-out {
+      background: transparent;
+      color: rgba(148, 163, 184, 0.4);
+      cursor: default;
+    }
+
+    .hm-status {
+      margin-top: 10px;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      text-align: center;
+      min-height: 1.1em;
+    }
+
+    .hm-legend-title {
+      margin-top: 10px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-align: center;
+    }
+
+    .hm-legend {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px 14px;
+      margin-top: 8px;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .hm-legend > span {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .hm-chip {
+      width: 12px;
+      height: 12px;
+      border-radius: 4px;
+    }
+
     /* Responsive tweaks */
     @media (max-width: 720px) {
       body {
         padding: 20px 12px;
       }
-    
+
       .card {
         padding: 16px 14px;
       }
-    
+
       .choice-row {
         grid-template-columns: 1fr;
       }
-    
+
       h1 {
         font-size: 1.5rem;
       }
@@ -445,7 +652,7 @@
       .card.results-card {
         text-align: center;
       }
-      
+
       .card.results-card table {
         margin-left: auto;
         margin-right: auto;
@@ -459,8 +666,8 @@
       <h1>Enchantments Lottery Statistics</h1>
       <p class="subtitle">
         Enter up to <strong>three</strong> choices. Each choice has its own zone, date, and group size.
-        The table will show estimated odds for each choice across the years <strong>2022–2026</strong>,
-        along with the comparable date used in each year.
+        Pressing "Fetch Results" will display the estimated odds of winning your selection, along with the historical odds of
+        winning comparable dates in past years.
       </p>
 
       <form id="stats-form">
@@ -480,11 +687,6 @@
             </label>
           </div>
           <div>
-            <label>Date 1:
-              <input type="date" id="date1" min="2027-05-15" max="2027-10-31" />
-            </label>
-          </div>
-          <div>
             <label>Group Size 1:
               <select id="group_size1">
                 <option value="">--</option>
@@ -498,6 +700,13 @@
                 <option value="8">8</option>
               </select>
             </label>
+          </div>
+          <div>
+            <label for="date1">Date 1:</label>
+            <div class="date-input-row">
+              <input type="text" id="date1" placeholder="Select a date" readonly autocomplete="off" />
+              <button type="button" class="heatmap-btn" data-choice="1" title="Show odds heatmap calendar" aria-label="Show odds heatmap calendar for Choice 1">📅</button>
+            </div>
           </div>
         </div>
 
@@ -517,11 +726,6 @@
             </label>
           </div>
           <div>
-            <label>Date 2:
-              <input type="date" id="date2" min="2027-05-15" max="2027-10-31" />
-            </label>
-          </div>
-          <div>
             <label>Group Size 2:
               <select id="group_size2">
                 <option value="">--</option>
@@ -535,6 +739,13 @@
                 <option value="8">8</option>
               </select>
             </label>
+          </div>
+          <div>
+            <label for="date2">Date 2:</label>
+            <div class="date-input-row">
+              <input type="text" id="date2" placeholder="Select a date" readonly autocomplete="off" />
+              <button type="button" class="heatmap-btn" data-choice="2" title="Show odds heatmap calendar" aria-label="Show odds heatmap calendar for Choice 2">📅</button>
+            </div>
           </div>
         </div>
 
@@ -554,11 +765,6 @@
             </label>
           </div>
           <div>
-            <label>Date 3:
-              <input type="date" id="date3" min="2027-05-15" max="2027-10-31" />
-            </label>
-          </div>
-          <div>
             <label>Group Size 3:
               <select id="group_size3">
                 <option value="">--</option>
@@ -572,6 +778,13 @@
                 <option value="8">8</option>
               </select>
             </label>
+          </div>
+          <div>
+            <label for="date3">Date 3:</label>
+            <div class="date-input-row">
+              <input type="text" id="date3" placeholder="Select a date" readonly autocomplete="off" />
+              <button type="button" class="heatmap-btn" data-choice="3" title="Show odds heatmap calendar" aria-label="Show odds heatmap calendar for Choice 3">📅</button>
+            </div>
           </div>
         </div>
 
@@ -604,6 +817,28 @@
     </div> <!-- end .card -->
   </div> <!-- end .main-wrapper -->
 
+  <!-- Heatmap calendar dropdown -->
+  <div id="heatmap-popover" class="heatmap-popover" role="dialog" aria-labelledby="hm-month-label" hidden>
+    <button type="button" class="hm-close" id="hm-close" aria-label="Close heatmap">✕</button>
+    <div class="hm-header">
+      <button type="button" class="hm-nav" id="hm-prev" aria-label="Previous month">‹</button>
+      <div class="hm-month-label" id="hm-month-label"></div>
+      <button type="button" class="hm-nav" id="hm-next" aria-label="Next month">›</button>
+    </div>
+    <div class="hm-weekdays">
+      <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+    </div>
+    <div class="hm-grid" id="hm-grid"></div>
+    <div class="hm-status" id="hm-status"></div>
+    <div class="hm-legend-title">Estimated odds of winning</div>
+    <div class="hm-legend">
+      <span><span class="hm-chip hm-green"></span>&ge; 30%</span>
+      <span><span class="hm-chip hm-orange"></span>5&ndash;30%</span>
+      <span><span class="hm-chip hm-red"></span>&lt; 5%</span>
+      <span><span class="hm-chip hm-nodata"></span>No data</span>
+    </div>
+  </div>
+
   <script>
     const API_BASE_URL = '';
 
@@ -615,15 +850,8 @@
     const PREDICT_LABEL = `${PREDICT_YEAR} prediction`;
     const PERMIT_YEAR = 2027;
 
-    // Snap the year back to PERMIT_YEAR whenever a date input changes.
-    function enforcePermitYear(el) {
-      if (!el.value) return;
-      const [, mm, dd] = el.value.split('-');
-      el.value = `${PERMIT_YEAR}-${mm}-${dd}`;
-    }
-    ['date1', 'date2', 'date3'].forEach(id => {
-      document.getElementById(id).addEventListener('change', e => enforcePermitYear(e.target));
-    });
+    // Date fields are read-only; dates are picked from the heatmap calendar,
+    // which only offers PERMIT_YEAR dates, so no year enforcement is needed.
 
     function clamp(x, lo, hi) {
       return Math.max(lo, Math.min(hi, x));
@@ -763,9 +991,9 @@
 
       return { P1: P1Hat, P2: P2Hat, P3: P3Hat, total, byChoice: [P1Hat, P2Hat, P3Hat] };
     }
-  
+
     // --- Helpers for session & device metadata ---
-  
+
     function getSessionId() {
       let id = localStorage.getItem('sessionId');
       if (!id) {
@@ -778,21 +1006,21 @@
       }
       return id;
     }
-  
+
     function getNextQueryIndex() {
       const current = Number(localStorage.getItem('queryIndex') || '0');
       const next = current + 1;
       localStorage.setItem('queryIndex', String(next));
       return next;
     }
-  
+
     function getDeviceType() {
       const ua = navigator.userAgent || '';
       if (/Mobi|Android/i.test(ua)) return 'mobile';
       if (/Tablet|iPad/i.test(ua)) return 'tablet';
       return 'desktop';
     }
-  
+
     function getOsName() {
       const ua = navigator.userAgent || '';
       if (ua.includes('Windows')) return 'Windows';
@@ -802,7 +1030,7 @@
       if (/iPhone|iPad|iPod/.test(ua)) return 'iOS';
       return 'Unknown';
     }
-  
+
     // Convert "YYYY-MM-DD" (from the form) to "Mmm dd"
     function formatIsoDateToMmmDd(isoDate) {
       if (!isoDate) return '';
@@ -813,7 +1041,16 @@
                       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
       return months[month - 1] + ' ' + day.toString();
     }
-  
+
+    // Convert "YYYY-MM-DD" to "Mmm d, YYYY" for display in the date fields
+    function formatIsoDatePretty(isoDate) {
+      if (!isoDate) return '';
+      const [yearStr, monthStr, dayStr] = isoDate.split('-');
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return months[parseInt(monthStr, 10) - 1] + ' ' + parseInt(dayStr, 10) + ', ' + yearStr;
+    }
+
     // Convert "MM-DD-YYYY" (from backend comparable date) to "Mmm dd"
     function formatMmDdYyyyToMmmDd(mdY) {
       if (!mdY) return '';
@@ -824,48 +1061,48 @@
                       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
       return months[month - 1] + ' ' + day.toString();
     }
-  
+
     const form = document.getElementById('stats-form');
     const errorDiv = document.getElementById('error');
     const predictionContainer = document.getElementById('prediction-container');
     const historyContainer = document.getElementById('history-container');
     const submitButton = document.getElementById('submit-button');
-  
+
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
-  
+
       errorDiv.textContent = '';
       predictionContainer.innerHTML = 'Building table...';
       historyContainer.innerHTML = '';
       document.getElementById('history-title').style.display = 'none';
-  
+
       // Collect all choices from the form
       const choices = [
         {
           label: 'Choice 1',
           zone: document.getElementById('zone1').value.trim(),
-          date: document.getElementById('date1').value,
+          date: document.getElementById('date1').dataset.iso || '',
           groupSizeValue: document.getElementById('group_size1').value
         },
         {
           label: 'Choice 2',
           zone: document.getElementById('zone2').value.trim(),
-          date: document.getElementById('date2').value,
+          date: document.getElementById('date2').dataset.iso || '',
           groupSizeValue: document.getElementById('group_size2').value
         },
         {
           label: 'Choice 3',
           zone: document.getElementById('zone3').value.trim(),
-          date: document.getElementById('date3').value,
+          date: document.getElementById('date3').dataset.iso || '',
           groupSizeValue: document.getElementById('group_size3').value
         }
       ];
-  
+
       // Keep only rows where zone AND date are filled
       const filledChoices = choices.filter(
         (c) => c.zone !== '' && c.date !== ''
       );
-  
+
       if (filledChoices.length === 0) {
         errorDiv.textContent = 'Please fill in at least one zone/date choice with a group size.';
         predictionContainer.innerHTML = '';
@@ -875,14 +1112,14 @@
 
       // Validation: no duplicate zone+date across choices
       const seen = new Map(); // key -> label (e.g., "Core|2026-07-15" -> "Choice 1")
-      
+
       for (const c of filledChoices) {
         // Normalize zone and date just in case
         const zone = (c.zone || '').trim();
         const date = (c.date || '').trim();
-      
+
         const key = zone.toLowerCase() + '|' + date; // case-insensitive zone compare
-      
+
         if (seen.has(key)) {
           const first = seen.get(key);
           errorDiv.textContent =
@@ -892,10 +1129,10 @@
         historyContainer.innerHTML = '';
           return;
         }
-      
+
         seen.set(key, c.label);
       }
-  
+
       // Extra safety: ensure dates are within the allowed lottery window
       const minDate = new Date('2027-05-15');
       const maxDate = new Date('2027-10-31');
@@ -909,7 +1146,7 @@
           return;
         }
       }
-  
+
       // Validate group size for each filled choice
       for (const c of filledChoices) {
         const size = parseInt(c.groupSizeValue, 10);
@@ -921,13 +1158,13 @@
         }
         c.groupSize = size;
       }
-  
+
       // Use the year from the first filled choice's date as the permit year
       const permitYear = 2027;
-  
+
       // Historical years used by your databases
       const dataYears = [2022, 2023, 2024, 2025, 2026];
-  
+
       // Prepare payload choices (only filled ones)
       const apiChoices = filledChoices.map((c) => {
         const [yearStr, monthStr, dayStr] = c.date.split('-');
@@ -938,19 +1175,19 @@
           group_size: c.groupSize
         };
       });
-  
+
       // --- collect session & device metadata for analytics ---
       const sessionId = getSessionId();
       const queryIndex = getNextQueryIndex();
       const deviceType = getDeviceType();
       const browserUa = navigator.userAgent || '';
       const osName = getOsName();
-  
+
       const payload = {
         permit_year: permitYear,
         data_years: dataYears,
         choices: apiChoices,
-  
+
         // These fields line up with OddsRequest in main.py
         session_id: sessionId,
         query_index: queryIndex,
@@ -959,12 +1196,12 @@
         os_name: osName
         // latency_ms: can be added later if we want
       };
-  
+
       console.log('Payload to /estimate_odds:', payload);
-  
+
       submitButton.disabled = true;
       submitButton.textContent = 'Loading...';
-  
+
       try {
         const response = await fetch(API_BASE_URL + '/estimate_odds', {
           method: 'POST',
@@ -973,16 +1210,16 @@
           },
           body: JSON.stringify(payload)
         });
-  
+
         if (!response.ok) {
           errorDiv.textContent = 'Error from server: ' + response.status + ' ' + response.statusText;
           predictionContainer.innerHTML = '';
         historyContainer.innerHTML = '';
           return;
         }
-  
+
         const data = await response.json();
-  
+
         const years = data.years || [];
         const resultChoices = data.choices || [];
 
@@ -1100,7 +1337,7 @@
 
           const labelCell = document.createElement('td');
           labelCell.textContent =
-            `${c.label}: ${c.zone} (${formatIsoDateToMmmDd(c.date)}), ${c.groupSize} people`;
+            `${c.label}: ${c.zone}, ${formatIsoDateToMmmDd(c.date)}, ${c.groupSize} people`;
           row.appendChild(labelCell);
 
           historicalYears.forEach((year) => {
@@ -1158,7 +1395,7 @@
         historyContainer.innerHTML = '';
         historyContainer.appendChild(histTable);
         document.getElementById('history-title').style.display = '';
-  
+
       } catch (err) {
         console.error(err);
         errorDiv.textContent = 'Something went wrong while contacting the server.';
@@ -1169,12 +1406,231 @@
         submitButton.textContent = 'Fetch Results';
       }
     });
+
+    // -------------------------
+    // Heatmap calendar
+    // -------------------------
+
+    const HM_SEASON_START = new Date(PERMIT_YEAR, 4, 15); // May 15
+    const HM_SEASON_END = new Date(PERMIT_YEAR, 9, 31);   // Oct 31
+    const HM_MIN_MONTH = 4; // May
+    const HM_MAX_MONTH = 9; // October
+    const HM_MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
+                            'July', 'August', 'September', 'October', 'November', 'December'];
+
+    const hmPopover = document.getElementById('heatmap-popover');
+    const hmGrid = document.getElementById('hm-grid');
+    const hmStatus = document.getElementById('hm-status');
+    const hmMonthLabel = document.getElementById('hm-month-label');
+    const hmPrevBtn = document.getElementById('hm-prev');
+    const hmNextBtn = document.getElementById('hm-next');
+
+    const heatmapCache = {}; // "zone|groupSize" -> {isoDate: predictedProb or null}
+    let hmChoiceNum = null;  // which choice's date field the heatmap fills
+    let hmMonth = HM_MIN_MONTH; // month index currently displayed
+    let hmOdds = null;       // predicted prob by ISO date for the open heatmap
+    let hmRequestId = 0;     // guards against stale fetch responses
+
+    // Turn per-year odds into a single predicted probability per date,
+    // using the same logit-linear trend as the main prediction.
+    function hmPredictAll(oddsByDate) {
+      const out = {};
+      for (const [iso, byYear] of Object.entries(oddsByDate)) {
+        const series = [];
+        for (const [y, p] of Object.entries(byYear)) {
+          if (p !== null && Number.isFinite(p)) {
+            series.push({ year: Number(y), p: clamp(p, 0, 1) });
+          }
+        }
+        out[iso] = forecastProbLogit(series, PREDICT_YEAR, 3);
+      }
+      return out;
+    }
+
+    function hmColorClass(p) {
+      if (p == null) return 'hm-nodata';
+      if (p >= 0.30) return 'hm-green';
+      if (p >= 0.05) return 'hm-orange';
+      return 'hm-red';
+    }
+
+    function renderHmHeader() {
+      hmMonthLabel.textContent = HM_MONTH_NAMES[hmMonth] + ' ' + PERMIT_YEAR;
+      hmPrevBtn.disabled = hmMonth <= HM_MIN_MONTH;
+      hmNextBtn.disabled = hmMonth >= HM_MAX_MONTH;
+    }
+
+    function renderHeatmapMonth() {
+      renderHmHeader();
+      hmGrid.innerHTML = '';
+
+      const firstDow = new Date(PERMIT_YEAR, hmMonth, 1).getDay();
+      const daysInMonth = new Date(PERMIT_YEAR, hmMonth + 1, 0).getDate();
+
+      for (let i = 0; i < firstDow; i++) {
+        hmGrid.appendChild(document.createElement('span'));
+      }
+
+      for (let d = 1; d <= daysInMonth; d++) {
+        const cellDate = new Date(PERMIT_YEAR, hmMonth, d);
+        const iso = `${PERMIT_YEAR}-${String(hmMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+
+        const cell = document.createElement('button');
+        cell.type = 'button';
+        cell.className = 'hm-day';
+        cell.textContent = d;
+
+        if (cellDate < HM_SEASON_START || cellDate > HM_SEASON_END) {
+          cell.classList.add('hm-out');
+          cell.disabled = true;
+        } else {
+          const p = hmOdds ? hmOdds[iso] : null;
+          cell.classList.add(hmColorClass(p));
+          cell.title = p == null
+            ? `Choice ${hmChoiceNum} odds: no data`
+            : `Choice ${hmChoiceNum} odds: ${(p * 100).toFixed(1)}%`;
+          cell.addEventListener('click', () => {
+            const input = document.getElementById('date' + hmChoiceNum);
+            input.dataset.iso = iso;
+            input.value = formatIsoDatePretty(iso);
+            closeHeatmap();
+          });
+        }
+        hmGrid.appendChild(cell);
+      }
+    }
+
+    function closeHeatmap() {
+      hmPopover.hidden = true;
+      hmChoiceNum = null;
+    }
+
+    // Place the popover just below the clicked button, clamped to the viewport.
+    function positionHeatmap(btn) {
+      const rect = btn.getBoundingClientRect();
+      const popWidth = hmPopover.offsetWidth;
+      const viewportWidth = document.documentElement.clientWidth;
+
+      let left = window.scrollX + rect.left;
+      const maxLeft = window.scrollX + viewportWidth - popWidth - 8;
+      left = Math.max(window.scrollX + 8, Math.min(left, maxLeft));
+
+      hmPopover.style.left = left + 'px';
+      hmPopover.style.top = (window.scrollY + rect.bottom + 8) + 'px';
+    }
+
+    async function openHeatmap(choiceNum, btn) {
+      // Clicking the same button while open closes the dropdown.
+      if (!hmPopover.hidden && hmChoiceNum === choiceNum) {
+        closeHeatmap();
+        return;
+      }
+
+      const zone = document.getElementById('zone' + choiceNum).value.trim();
+      const gsValue = document.getElementById('group_size' + choiceNum).value;
+
+      errorDiv.textContent = '';
+      if (!zone || !gsValue) {
+        closeHeatmap();
+        errorDiv.textContent =
+          `Select a zone and group size for Choice ${choiceNum} to view the odds heatmap.`;
+        return;
+      }
+      const groupSize = parseInt(gsValue, 10);
+
+      hmChoiceNum = choiceNum;
+
+      // Open on the month of the already-chosen date, if any; otherwise July.
+      const dateVal = document.getElementById('date' + choiceNum).dataset.iso || '';
+      hmMonth = 6; // July
+      if (dateVal) {
+        const m = parseInt(dateVal.split('-')[1], 10) - 1;
+        if (m >= HM_MIN_MONTH && m <= HM_MAX_MONTH) hmMonth = m;
+      }
+
+      hmPopover.hidden = false;
+      hmOdds = null;
+      hmGrid.innerHTML = '';
+      renderHmHeader();
+      positionHeatmap(btn);
+
+      const cacheKey = zone.toLowerCase() + '|' + groupSize;
+      if (!heatmapCache[cacheKey]) {
+        const requestId = ++hmRequestId;
+        hmStatus.textContent = 'Please wait...';
+        try {
+          const response = await fetch(API_BASE_URL + '/heatmap_odds', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              zone: zone,
+              group_size: groupSize,
+              permit_year: PERMIT_YEAR,
+              data_years: [2022, 2023, 2024, 2025, 2026]
+            })
+          });
+          if (!response.ok) {
+            if (requestId === hmRequestId) {
+              hmStatus.textContent = 'Error from server: ' + response.status;
+            }
+            return;
+          }
+          const data = await response.json();
+          heatmapCache[cacheKey] = hmPredictAll(data.odds_by_date || {});
+        } catch (err) {
+          console.error(err);
+          if (requestId === hmRequestId) {
+            hmStatus.textContent = 'Something went wrong while loading odds.';
+          }
+          return;
+        }
+        if (requestId !== hmRequestId) return; // a newer heatmap was opened
+      }
+
+      hmOdds = heatmapCache[cacheKey];
+      hmStatus.textContent = '';
+      renderHeatmapMonth();
+    }
+
+    document.querySelectorAll('.heatmap-btn').forEach((btn) => {
+      btn.addEventListener('click', () => openHeatmap(parseInt(btn.dataset.choice, 10), btn));
+    });
+
+    // The read-only date fields open the heatmap too.
+    ['1', '2', '3'].forEach((n) => {
+      const btn = document.querySelector(`.heatmap-btn[data-choice="${n}"]`);
+      document.getElementById('date' + n).addEventListener('click', () => {
+        openHeatmap(parseInt(n, 10), btn);
+      });
+    });
+
+    hmPrevBtn.addEventListener('click', () => {
+      if (hmMonth > HM_MIN_MONTH) {
+        hmMonth--;
+        renderHeatmapMonth();
+      }
+    });
+
+    hmNextBtn.addEventListener('click', () => {
+      if (hmMonth < HM_MAX_MONTH) {
+        hmMonth++;
+        renderHeatmapMonth();
+      }
+    });
+
+    document.getElementById('hm-close').addEventListener('click', closeHeatmap);
+
+    // Close when clicking anywhere outside the dropdown and its triggers.
+    document.addEventListener('click', (e) => {
+      if (hmPopover.hidden) return;
+      if (hmPopover.contains(e.target)) return;
+      if (e.target.closest('.date-input-row')) return;
+      closeHeatmap();
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !hmPopover.hidden) closeHeatmap();
+    });
   </script>
 </body>
 </html>
-
-
-
-
-
-
