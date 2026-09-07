@@ -467,7 +467,7 @@
     .heatmap-popover {
       position: absolute;
       z-index: 100;
-      width: min(380px, 94vw);
+      width: min(420px, 94vw);
       background: radial-gradient(circle at top left, rgba(56, 189, 248, 0.09), transparent 50%),
                   var(--card-bg);
       border: 1px solid var(--border-subtle);
@@ -551,15 +551,28 @@
     .hm-day {
       aspect-ratio: 1 / 1;
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
+      gap: 2px;
+      padding: 0;
       border: none;
       border-radius: 10px;
       font-size: 0.9rem;
       font-weight: 600;
       font-family: inherit;
+      line-height: 1;
       cursor: pointer;
       transition: transform 0.1s ease, filter 0.1s ease;
+    }
+
+    /* Odds shown inside each in-season tile, below the day number. */
+    .hm-day-odds {
+      font-size: 0.62rem;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+      opacity: 0.85;
+      white-space: nowrap;
     }
 
     .hm-day:hover:not(:disabled) {
@@ -1478,7 +1491,10 @@
         const cell = document.createElement('button');
         cell.type = 'button';
         cell.className = 'hm-day';
-        cell.textContent = d;
+        const dayNum = document.createElement('span');
+        dayNum.className = 'hm-day-num';
+        dayNum.textContent = d;
+        cell.appendChild(dayNum);
 
         if (cellDate < HM_SEASON_START || cellDate > HM_SEASON_END) {
           cell.classList.add('hm-out');
@@ -1486,9 +1502,16 @@
         } else {
           const p = hmOdds ? hmOdds[iso] : null;
           cell.classList.add(hmColorClass(p));
-          cell.title = p == null
-            ? `Choice ${hmChoiceNum} odds: no data`
-            : `Choice ${hmChoiceNum} odds: ${(p * 100).toFixed(1)}%`;
+          // Odds are displayed inside the tile rather than in a hover tooltip.
+          if (hmOdds) {
+            const odds = document.createElement('span');
+            odds.className = 'hm-day-odds';
+            odds.textContent = p == null ? '—' : (p * 100).toFixed(1) + '%';
+            cell.appendChild(odds);
+          }
+          cell.setAttribute('aria-label', p == null
+            ? `${iso}: odds unavailable`
+            : `${iso}: ${(p * 100).toFixed(1)}% odds`);
           cell.addEventListener('click', () => {
             const input = document.getElementById('date' + hmChoiceNum);
             input.dataset.iso = iso;
