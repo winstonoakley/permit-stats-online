@@ -1,16 +1,20 @@
 """
 Backtest the prediction algorithm against actual outcomes.
 
+Predicts a target year from the years before it using the same engine code
+the site uses (app.odds_engine.lookup_first_choice_history +
+predict_first_choice), then scores against the target year's recorded odds.
+
 Usage:
     python backtest.py --target 2025
     python backtest.py --target 2026 --n 2000 --seed 7
+    python backtest.py --target 2025 --method logit     # legacy trend forecast, for comparison
     python backtest.py --target 2025 --output results/my_run.txt
 """
 
 import argparse
 import math
 import random
-import sqlite3
 import datetime as dt
 from pathlib import Path
 import sys
@@ -31,17 +35,17 @@ class _Tee:
 
 sys.path.insert(0, str(Path(__file__).parent))
 import app.odds_engine as eng
-from app.odds_engine import find_comp_date
 
 DB_DIR = Path(__file__).parent / "odds_databases"
 
 ZONES = ["Core", "Colchuck", "Snow", "Eightmile", "Stuart"]
-COREZONE_IDS = {2022: 4, 2023: 7, 2024: 1, 2025: 4, 2026: 2}
-PREDICT_WINDOW = 3
+DATA_YEARS = [2022, 2023, 2024, 2025, 2026]
+LOGIT_WINDOW = 3   # only used by --method logit
 
 
 # ---------------------------------------------------------------------------
-# Prediction logic (mirrors index.html forecastProbLogit)
+# Legacy predictor (the logit-linear trend the frontend used before the fix).
+# Kept so the improvement can be re-measured; not used by the site.
 # ---------------------------------------------------------------------------
 
 def _clamp(x, lo, hi):
@@ -64,8 +68,8 @@ def _fit_line(points):
     b = 0.0 if den == 0 else num / den
     return my - b * mt, b
 
-def forecast_prob(series, target_year, window=PREDICT_WINDOW):
-    """Logit-linear extrapolation matching the frontend algorithm."""
+def forecast_prob_logit(series, target_year, window=LOGIT_WINDOW):
+    """Logit-linear extrapolation over the most recent `window` points."""
     clean = sorted(
         [(y, p) for y, p in series if math.isfinite(y) and math.isfinite(p)],
         key=lambda x: x[0],
@@ -78,49 +82,6 @@ def forecast_prob(series, target_year, window=PREDICT_WINDOW):
     pts = [(t, _logit(p)) for t, p in recent]
     a, b = _fit_line(pts)
     return _clamp(_inv_logit(a + b * target_year), 0.0005, 0.9995)
-
-
-# ---------------------------------------------------------------------------
-# Odds lookup
-# ---------------------------------------------------------------------------
-
-def lookup_odds(zone, month, day, group_size, data_year, permit_year):
-    """Return odds (0..1) for a single choice in a given data year, or None on failure."""
-    db_path = DB_DIR / f"odds_{data_year}.db"
-    if not db_path.exists():
-        return None
-
-    conn = sqlite3.connect(db_path)
-    eng.cur = conn.cursor()
-    eng.corezoneid = COREZONE_IDS[data_year]
-    try:
-        permit_date = dt.date(permit_year, month, day)
-        comp_date = find_comp_date(permit_date, data_year)
-        date_str = comp_date.strftime("%m-%d-%Y")
-
-        eng.cur.execute("SELECT zone_id FROM zone WHERE zonename = ?", (zone,))
-        row = eng.cur.fetchone()
-        if not row:
-            return None
-        zid = row[0]
-
-        eng.cur.execute("SELECT date_id FROM date WHERE datestr = ?", (date_str,))
-        row = eng.cur.fetchone()
-        if not row:
-            return None
-        did = row[0]
-
-        if zid == eng.corezoneid:
-            odds = eng.coreodds1(did, group_size)
-        else:
-            r = eng.checkexact(1, zid, did, group_size, 0, 0, 0, 0, 0, 0)
-            odds = r[0][0] if r else 0.0
-
-        return float(odds) if odds is not None else None
-    except Exception:
-        return None
-    finally:
-        conn.close()
 
 
 # ---------------------------------------------------------------------------
@@ -180,6 +141,24 @@ def compute_metrics(pairs):
     }
 
 
+def print_calibration(pairs, label, key):
+    """Bucket `pairs` by key(pred, actual, extra) and print pred vs actual."""
+    buckets = [(0, 0.05), (0.05, 0.10), (0.10, 0.20), (0.20, 0.40), (0.40, 1.01)]
+    print(f"\n  {label}")
+    print(f"  {'Pred range':<12} {'Count':>6} {'Avg pred':>10} {'Avg actual':>11} {'Bias':>8}")
+    print("  " + "-" * 52)
+    for lo, hi in buckets:
+        bucket = [x for x in pairs if lo <= key(x) < hi]
+        if not bucket:
+            continue
+        avg_p = sum(x[0] for x in bucket) / len(bucket)
+        avg_a = sum(x[1] for x in bucket) / len(bucket)
+        hi_label = "100%" if hi > 1 else f"{hi*100:.0f}%"
+        rng = f"{lo*100:.0f}%–{hi_label}"
+        bias = (avg_p - avg_a) * 100
+        print(f"  {rng:<12} {len(bucket):>6} {avg_p*100:>9.1f}% {avg_a*100:>10.1f}% {bias:>+7.1f}pp")
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -189,6 +168,10 @@ def main():
     parser.add_argument("--target", type=int, required=True, choices=[2025, 2026])
     parser.add_argument("--n", type=int, default=1000)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--method", choices=["smoothed", "logit"], default="smoothed",
+        help="smoothed = the site's predictor (default); logit = legacy trend forecast",
+    )
     parser.add_argument(
         "--output",
         type=str,
@@ -200,54 +183,63 @@ def main():
 
     random.seed(args.seed)
     target = args.target
-    prior_years = [y for y in sorted(COREZONE_IDS) if y < target]
+    prior_years = [y for y in DATA_YEARS if y < target]
+    db_dir = str(DB_DIR)
 
     output_path = args.output or f"backtest_{target}_{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
     output_file = open(output_path, "w", encoding="utf-8")
     sys.stdout = _Tee(sys.__stdout__, output_file)
 
     print(f"\nBacktesting predictions for {target}")
-    print(f"Prior years used for prediction: {prior_years}  (window={PREDICT_WINDOW})")
+    print(f"Prior years used for prediction: {prior_years}")
+    print(f"Method: {args.method}"
+          + (f"  (kernel {eng.SMOOTH_WEIGHTS}, all prior years averaged)" if args.method == "smoothed"
+             else f"  (logit-linear trend, window={LOGIT_WINDOW})"))
     print(f"Sampling {args.n} random choices (seed={args.seed})...\n")
 
     choices = sample_choices(args.n, target)
 
-    pairs = []
+    pairs = []          # (predicted, actual, actual_obs)
     skipped_no_actual = 0
     skipped_no_history = 0
 
     for zone, month, day, group_size in choices:
-        actual = lookup_odds(zone, month, day, group_size, target, target)
+        permit_date = dt.date(target, month, day)
+
+        actual_rec = eng.lookup_first_choice_history(
+            zone, group_size, permit_date, [target], db_dir, neighbour_weeks=0
+        )[target]
+        actual = actual_rec["odds"]
         if not actual:
             skipped_no_actual += 1
             if args.verbose:
                 print(f"  [skip: no actual] {zone} {month:02d}-{day:02d} gs={group_size}")
             continue
 
-        series = [
-            (yr, odds)
-            for yr in prior_years
-            if (odds := lookup_odds(zone, month, day, group_size, yr, target)) is not None
-        ]
-
-        if len(series) < 2:
+        history = eng.lookup_first_choice_history(
+            zone, group_size, permit_date, prior_years, db_dir
+        )
+        available = [y for y in prior_years if history[y]["odds"] is not None]
+        if len(available) < 2:
             skipped_no_history += 1
             if args.verbose:
-                found = [yr for yr in prior_years
-                         if lookup_odds(zone, month, day, group_size, yr, target) is not None]
-                missing = [yr for yr in prior_years if yr not in found]
+                missing = [y for y in prior_years if y not in available]
                 print(f"  [skip: history]   {zone} {month:02d}-{day:02d} gs={group_size} "
-                      f"| found={found} missing={missing}")
+                      f"| found={available} missing={missing}")
             continue
 
-        predicted = forecast_prob(series, target)
+        if args.method == "logit":
+            predicted = forecast_prob_logit([(y, history[y]["odds"]) for y in available], target)
+        else:
+            predicted = eng.predict_first_choice(history)
+
         if predicted is None:
             skipped_no_history += 1
             if args.verbose:
-                print(f"  [skip: no pred]   {zone} {month:02d}-{day:02d} gs={group_size} series={series}")
+                print(f"  [skip: no pred]   {zone} {month:02d}-{day:02d} gs={group_size}")
             continue
 
-        pairs.append((predicted, actual))
+        pairs.append((predicted, actual, actual_rec["obs"]))
 
     print(f"  Evaluated : {len(pairs)}")
     print(f"  Skipped (no actual data)      : {skipped_no_actual}")
@@ -257,7 +249,7 @@ def main():
         print("No usable samples — cannot compute metrics.")
         return
 
-    m = compute_metrics(pairs)
+    m = compute_metrics([(p, a) for p, a, _ in pairs])
 
     print("=" * 48)
     print(f"   PREDICTION ACCURACY — {target}")
@@ -277,21 +269,13 @@ def main():
     print(f"  Within +/-10 pp         : {m['within_10pp']:>6.1f}%")
     print("=" * 48)
 
-    # Calibration table
-    buckets = [(0, 0.05), (0.05, 0.10), (0.10, 0.20), (0.20, 0.40), (0.40, 1.01)]
-    print("\n  CALIBRATION")
-    print(f"  {'Pred range':<12} {'Count':>6} {'Avg pred':>10} {'Avg actual':>11} {'Bias':>8}")
-    print("  " + "-" * 52)
-    for lo, hi in buckets:
-        bucket = [(p, a) for p, a in pairs if lo <= p < hi]
-        if not bucket:
-            continue
-        avg_p = sum(p for p, _ in bucket) / len(bucket)
-        avg_a = sum(a for _, a in bucket) / len(bucket)
-        hi_label = "100%" if hi > 1 else f"{hi*100:.0f}%"
-        label = f"{lo*100:.0f}%–{hi_label}"
-        bias = (avg_p - avg_a) * 100
-        print(f"  {label:<12} {len(bucket):>6} {avg_p*100:>9.1f}% {avg_a*100:>10.1f}% {bias:>+7.1f}pp")
+    print_calibration(pairs, "CALIBRATION (all samples)", key=lambda x: x[0])
+
+    # The "actual" is itself a small-sample average. Show how the model does
+    # on targets backed by at least a few applications, where noise is lower.
+    solid = [x for x in pairs if x[2] is not None and x[2] >= 3]
+    if solid:
+        print_calibration(solid, f"CALIBRATION (actual backed by obs >= 3; n={len(solid)})", key=lambda x: x[0])
 
     print()
 

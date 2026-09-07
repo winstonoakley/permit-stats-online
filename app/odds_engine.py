@@ -35,6 +35,13 @@ def finddateid(d):
 # Building the Core zone group size scaling dictionary
 coregs = {1:4.64, 2:1.41, 3:1.15, 4:1.18, 5:1.07, 6:1.2, 7:1.03}
 
+# Lottery season bounds (month, day) and the neighbour-smoothing kernel used by
+# the calibrated predictor (see predict_first_choice at the bottom of this file).
+SEASON_START_MD = (5, 15)   # May 15
+SEASON_END_MD = (10, 31)    # Oct 31
+NEIGHBOUR_WEEKS = 1         # same-weekday dates this many weeks either side
+SMOOTH_WEIGHTS = {0: 1.0, 1: 0.5}   # weight by |week offset|; chosen by backtest
+
 # Find relevant records
 # Fetch exact match
 def checkexact(cnum, z1, d1, g1, z2, d2, g2, z3, d3, g3):
@@ -564,6 +571,10 @@ def estimate_season_odds(
     odds_by_date: Dict[str, Dict[int, Any]] = {
         d.isoformat(): {} for d in season_dates
     }
+    # Per permit date: neighbour-smoothed odds for each year that has data.
+    smoothed_by_date: Dict[str, List[float]] = {
+        d.isoformat(): [] for d in season_dates
+    }
 
     for dyear in data_years:
         db_path = os.path.join(db_dir, f"odds_{dyear}.db")
@@ -587,32 +598,50 @@ def estimate_season_odds(
                     odds_by_date[d.isoformat()][dyear] = None
                 continue
 
-            comp_cache: Dict[str, Any] = {}
+            season_start_y = dt.date(dyear, *SEASON_START_MD)
+            season_end_y = dt.date(dyear, *SEASON_END_MD)
+            # Actual date in dyear -> (odds, obs) or None. Many permit dates
+            # share a comparable date, and neighbours overlap, so cache.
+            odds_cache: Dict[dt.date, Any] = {}
+
+            def odds_on(date_obj):
+                if date_obj < season_start_y or date_obj > season_end_y:
+                    return None
+                if date_obj not in odds_cache:
+                    try:
+                        odds_cache[date_obj] = _c1_odds_on_date(zid, group_size, date_obj)
+                    except Exception:
+                        odds_cache[date_obj] = None
+                return odds_cache[date_obj]
+
             for d in season_dates:
-                date_str = None
+                iso = d.isoformat()
                 try:
                     comp_date = find_comp_date(d, dyear)
-                    date_str = comp_date.strftime('%m-%d-%Y')
-
-                    if date_str in comp_cache:
-                        odds_by_date[d.isoformat()][dyear] = comp_cache[date_str]
-                        continue
-
-                    did = finddateid(date_str)
-                    if zid == corezoneid:
-                        v = coreodds1(did, group_size)
-                        val = float(v) if v is not None else None
-                    else:
-                        r = checkexact(1, zid, did, group_size, 0, 0, 0, 0, 0, 0)
-                        val = float(r[0][0]) if r else None
                 except Exception:
-                    val = None
+                    odds_by_date[iso][dyear] = None
+                    continue
 
-                if date_str is not None:
-                    comp_cache[date_str] = val
-                odds_by_date[d.isoformat()][dyear] = val
+                r = odds_on(comp_date)
+                odds_by_date[iso][dyear] = r[0] if r is not None else None
+                if r is None:
+                    continue
+
+                rec = {"odds": r[0], "obs": r[1], "neighbours": []}
+                for k in range(-NEIGHBOUR_WEEKS, NEIGHBOUR_WEEKS + 1):
+                    if k == 0:
+                        continue
+                    nr = odds_on(comp_date + dt.timedelta(days=7 * k))
+                    if nr is not None:
+                        rec["neighbours"].append((k, nr[0], nr[1]))
+                smoothed_by_date[iso].append(smooth_year(rec))
         finally:
             conn.close()
+
+    predicted_by_date: Dict[str, Any] = {
+        iso: (max(0.0, min(1.0, sum(vals) / len(vals))) if vals else None)
+        for iso, vals in smoothed_by_date.items()
+    }
 
     return {
         "zone": zone,
@@ -620,6 +649,7 @@ def estimate_season_odds(
         "permit_year": permit_year,
         "data_years": data_years,
         "odds_by_date": odds_by_date,
+        "predicted_by_date": predicted_by_date,
     }
 
 
@@ -637,7 +667,9 @@ def estimate_odds_for_choice_set(
         * Uses find_comp_date(permit_year, data_year) for comparable date.
         * Looks up odds via:
             - coreodds1(...) if zone is the core zone that year.
-            - checkexact(1, ...) otherwise.
+            - the single (zone, date) row otherwise.
+    - Adds a calibrated prediction for permit_year from the same history
+      (see predict_first_choice).
     - Returns:
         {
           "years": [...],
@@ -649,15 +681,15 @@ def estimate_odds_for_choice_set(
               "day": ...,
               "group_size": ...,
               "display_date": "MM-DD-YYYY" (permit_year),
-              "odds_by_year": {year: float},
-              "comp_dates_by_year": {year: "MM-DD-YYYY" or None}
+              "odds_by_year": {year: float or None},
+              "obs_by_year": {year: int or None},
+              "comp_dates_by_year": {year: "MM-DD-YYYY" or None},
+              "predicted": float or None
             },
             ...
           ]
         }
     """
-    global cur, corezoneid
-
     result_choices: List[Dict[str, Any]] = []
 
     for idx, c in enumerate(choices, start=1):
@@ -666,8 +698,6 @@ def estimate_odds_for_choice_set(
 
         # If the choice is clearly invalid, fill zeros
         if (not c.zone) or (c.month < 1 or c.month > 12) or (c.day < 1 or c.day > 31):
-            odds_by_year = {dyear: 0.0 for dyear in data_years}
-            comp_dates_by_year = {dyear: None for dyear in data_years}
             result_choices.append(
                 {
                     "index": idx,
@@ -676,53 +706,40 @@ def estimate_odds_for_choice_set(
                     "day": c.day,
                     "group_size": c.group_size,
                     "display_date": display_date,
-                    "odds_by_year": odds_by_year,
-                    "comp_dates_by_year": comp_dates_by_year,
+                    "odds_by_year": {dyear: 0.0 for dyear in data_years},
+                    "obs_by_year": {dyear: None for dyear in data_years},
+                    "comp_dates_by_year": {dyear: None for dyear in data_years},
+                    "predicted": None,
                 }
             )
             continue
 
-        odds_by_year: Dict[int, float] = {}
-        comp_dates_by_year: Dict[int, str] = {}
+        try:
+            permit_date = dt.date(permit_year, c.month, c.day)
+        except ValueError:
+            permit_date = None
 
+        if permit_date is None:
+            history = {
+                dyear: {"comp_date": None, "odds": None, "obs": None, "neighbours": []}
+                for dyear in data_years
+            }
+        else:
+            history = lookup_first_choice_history(
+                c.zone, c.group_size, permit_date, data_years, db_dir
+            )
+
+        odds_by_year: Dict[int, Any] = {}
+        obs_by_year: Dict[int, Any] = {}
+        comp_dates_by_year: Dict[int, Any] = {}
         for dyear in data_years:
-            db_name = f"odds_{dyear}.db"
-            db_path = os.path.join(db_dir, db_name)
-            if not os.path.exists(db_path):
-                odds_by_year[dyear] = 0.0
-                comp_dates_by_year[dyear] = None
-                continue
-
-            conn = sqlite3.connect(db_path)
-            cur = conn.cursor()
-
-            # Look up Core zone_id from the database rather than hardcoding it
-            cur.execute("SELECT zone_id FROM zone WHERE zonename = 'Core'")
-            row = cur.fetchone()
-            corezoneid = row[0] if row else None
-            try:
-                # Comparable date for this permit date in the given data_year
-                permit_date = dt.date(permit_year, c.month, c.day)
-                comp_date = find_comp_date(permit_date, dyear)
-                date_str = comp_date.strftime('%m-%d-%Y')
-                comp_dates_by_year[dyear] = date_str
-
-                # Look up IDs
-                zid = findzoneid(c.zone)
-                did = finddateid(date_str)
-
-                # Core vs non-core logic (C1 only)
-                if zid == corezoneid:
-                    odds_value = coreodds1(did, c.group_size)
-                    odds_by_year[dyear] = float(odds_value) if odds_value is not None else None
-                else:
-                    r = checkexact(1, zid, did, c.group_size, 0, 0, 0, 0, 0, 0)
-                    odds_by_year[dyear] = float(r[0][0]) if r else None
-            except Exception:
-                odds_by_year[dyear] = None
-                comp_dates_by_year.setdefault(dyear, None)
-            finally:
-                conn.close()
+            rec = history[dyear]
+            db_missing = not os.path.exists(os.path.join(db_dir, f"odds_{dyear}.db"))
+            # A missing database file reports 0.0 (historical behaviour);
+            # a missing row reports None so the page shows "Data Unavailable".
+            odds_by_year[dyear] = 0.0 if db_missing else rec["odds"]
+            obs_by_year[dyear] = rec["obs"]
+            comp_dates_by_year[dyear] = rec["comp_date"]
 
         result_choices.append(
             {
@@ -733,7 +750,9 @@ def estimate_odds_for_choice_set(
                 "group_size": c.group_size,
                 "display_date": display_date,
                 "odds_by_year": odds_by_year,
+                "obs_by_year": obs_by_year,
                 "comp_dates_by_year": comp_dates_by_year,
+                "predicted": predict_first_choice(history),
             }
         )
 
@@ -741,3 +760,156 @@ def estimate_odds_for_choice_set(
         "years": data_years,
         "choices": result_choices,
     }
+
+
+# ---------------------------------------------------------------------------
+# First-choice history lookup and calibrated prediction
+# ---------------------------------------------------------------------------
+#
+# The site used to extrapolate a logit-linear trend through the last three
+# years in the browser. Backtesting showed that over-shoots badly whenever a
+# year is backed by 0-2 applications (which is every high-odds date), so the
+# prediction now lives here, is shared with backtest.py, and works as follows:
+#
+#   1. For each data year, look up the comparable date's odds and also the
+#      odds on the same weekday one week either side (same zone, same group
+#      size, same year). Nearby same-weekday dates share the same demand
+#      regime, so averaging them damps the noise of thin dates.
+#   2. Kernel-average those per year, in probability space (never logit
+#      space, where an imputed 100% would be infinite).
+#   3. Take the plain mean across years. No trend is fitted.
+#
+# Backtest (1000 random choices, predicting 2025 from 2022-2024 and 2026 from
+# 2022-2025): Brier 0.0326 -> 0.0103 and 0.0260 -> 0.0083; the 40%+ bucket
+# went from +9 pp over-confident to within 0.2 pp. Constants live near the
+# top of the file (SEASON_*_MD, NEIGHBOUR_WEEKS, SMOOTH_WEIGHTS).
+
+
+def _c1_odds_on_date(zid, gs, date_obj):
+    """
+    First-choice odds for zone `zid`, group size `gs`, on an actual calendar
+    date in the currently open database. Returns (odds, obs) or None.
+    """
+    date_str = date_obj.strftime('%m-%d-%Y')
+    cur.execute("SELECT date_id FROM date WHERE datestr = ?", (date_str,))
+    row = cur.fetchone()
+    if not row:
+        return None
+    did = row[0]
+
+    if zid == corezoneid:
+        cur.execute('''SELECT groupsize1, avgodds, obs
+                       FROM wins
+                       WHERE choicenum = 1 AND zoneid1 = ? AND dateid1 = ?''', (zid, did))
+        rows = cur.fetchall()
+        if not rows:
+            return None
+        for g, p, o in rows:
+            if g == gs:
+                return (float(p), int(o))
+        v = coreodds1(did, gs)  # interpolate / scale between observed sizes
+        if v is None:
+            return None
+        return (float(v), min(int(o) for _, _, o in rows))
+
+    cur.execute('''SELECT avgodds, obs
+                   FROM wins
+                   WHERE choicenum = 1 AND zoneid1 = ? AND dateid1 = ?''', (zid, did))
+    row = cur.fetchone()
+    if not row:
+        return None
+    return (float(row[0]), int(row[1]))
+
+
+def lookup_first_choice_history(
+    zone: str,
+    group_size: int,
+    permit_date: dt.date,
+    data_years: List[int],
+    db_dir: str,
+    neighbour_weeks: int = NEIGHBOUR_WEEKS,
+) -> Dict[int, Dict[str, Any]]:
+    """
+    Per data year: the comparable date's odds/obs plus the odds on the same
+    weekday up to `neighbour_weeks` weeks either side.
+
+    Returns:
+        {year: {"comp_date": "MM-DD-YYYY" or None,
+                "odds": float or None,
+                "obs": int or None,
+                "neighbours": [(week_offset, odds, obs), ...]}}
+    """
+    global cur, corezoneid
+
+    out: Dict[int, Dict[str, Any]] = {}
+    for dyear in data_years:
+        rec: Dict[str, Any] = {"comp_date": None, "odds": None, "obs": None, "neighbours": []}
+        out[dyear] = rec
+
+        db_path = os.path.join(db_dir, f"odds_{dyear}.db")
+        if not os.path.exists(db_path):
+            continue
+
+        conn = sqlite3.connect(db_path)
+        cur = conn.cursor()
+        try:
+            cur.execute("SELECT zone_id FROM zone WHERE zonename = 'Core'")
+            row = cur.fetchone()
+            corezoneid = row[0] if row else None
+            try:
+                zid = findzoneid(zone)
+            except Exception:
+                continue
+
+            comp = find_comp_date(permit_date, dyear)
+            rec["comp_date"] = comp.strftime('%m-%d-%Y')
+            r = _c1_odds_on_date(zid, group_size, comp)
+            if r is not None:
+                rec["odds"], rec["obs"] = r
+
+            season_start = dt.date(dyear, *SEASON_START_MD)
+            season_end = dt.date(dyear, *SEASON_END_MD)
+            for k in range(-neighbour_weeks, neighbour_weeks + 1):
+                if k == 0:
+                    continue
+                nd = comp + dt.timedelta(days=7 * k)
+                if nd < season_start or nd > season_end:
+                    continue
+                nr = _c1_odds_on_date(zid, group_size, nd)
+                if nr is not None:
+                    rec["neighbours"].append((k, nr[0], nr[1]))
+        except Exception:
+            pass
+        finally:
+            conn.close()
+
+    return out
+
+
+def smooth_year(rec: Dict[str, Any], weights: Dict[int, float] = SMOOTH_WEIGHTS):
+    """Kernel-weighted odds for one year's record, or None if the comparable
+    date itself has no data."""
+    if rec.get("odds") is None:
+        return None
+    num = weights[0] * rec["odds"]
+    den = weights[0]
+    for k, p, _obs in rec.get("neighbours", []):
+        w = weights.get(abs(k), 0.0)
+        num += w * p
+        den += w
+    return num / den
+
+
+def predict_first_choice(
+    history: Dict[int, Dict[str, Any]],
+    weights: Dict[int, float] = SMOOTH_WEIGHTS,
+):
+    """
+    Calibrated first-choice prediction from lookup_first_choice_history()
+    output: per-year neighbour-smoothed odds, averaged across years.
+    Returns a float in [0, 1], or None when no year has data.
+    """
+    yearly = [v for v in (smooth_year(rec, weights) for rec in history.values()) if v is not None]
+    if not yearly:
+        return None
+    return max(0.0, min(1.0, sum(yearly) / len(yearly)))

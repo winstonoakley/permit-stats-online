@@ -855,8 +855,8 @@
   <script>
     const API_BASE_URL = '';
 
-        // -------------------------
-    // Prediction helpers (2026)
+    // -------------------------
+    // Prediction helpers
     // -------------------------
 
     const PREDICT_YEAR = 2027;
@@ -870,113 +870,30 @@
       return Math.max(lo, Math.min(hi, x));
     }
 
-    function logit(p) {
-      p = clamp(p, 1e-6, 1 - 1e-6);
-      return Math.log(p / (1 - p));
-    }
-
-    function invLogit(x) {
-      const ex = Math.exp(x);
-      return ex / (1 + ex);
-    }
-
-    // Simple OLS fit for y = a + b*t
-    function fitLine(points) {
-      const n = points.length;
-      const meanT = points.reduce((s, p) => s + p.t, 0) / n;
-      const meanY = points.reduce((s, p) => s + p.y, 0) / n;
-
-      let num = 0;
-      let den = 0;
-      for (const p of points) {
-        num += (p.t - meanT) * (p.y - meanY);
-        den += (p.t - meanT) * (p.t - meanT);
-      }
-      const b = den === 0 ? 0 : num / den;
-      const a = meanY - b * meanT;
-      return { a, b };
-    }
-
     /**
-     * Forecast a bounded probability for targetYear using logit-linear trend.
-     * Uses the most recent `window` points.
-     * Falls back to last-observation-carried-forward if fewer than 2 points.
-     */
-    function forecastProbLogit(series, targetYear, window = 3) {
-      const clean = (series || [])
-        .filter(d => Number.isFinite(d.year) && Number.isFinite(d.p))
-        .sort((a, b) => a.year - b.year);
-
-      if (clean.length === 0) return null;
-
-      const recent = clean.slice(Math.max(0, clean.length - window));
-      if (recent.length === 1) return clamp(recent[0].p, 0, 1);
-
-      const pts = recent.map(d => ({ t: d.year, y: logit(d.p) }));
-      const { a, b } = fitLine(pts);
-
-      const yHat = a + b * targetYear;
-      return clamp(invLogit(yHat), 0.0005, 0.9995);
-    }
-
-    /**
-     * Build 2026 predictions for a set of ranked choices using priority-consistent conditioning.
-     * Expects resultChoices to be aligned with filledChoices order (Choice 1/2/3).
+     * Combine the server's per-choice first-choice predictions for a ranked
+     * set using priority-consistent conditioning: a lower choice can only be
+     * won with the probability left over after the higher choices.
+     *
+     * The per-choice prediction itself ("predicted" on each result choice) is
+     * computed server-side by app/odds_engine.py so the site and backtest.py
+     * share one implementation.
      *
      * Returns:
      * {
      *   P1, P2, P3, total,
      *   byChoice: [P1, P2, P3] aligned to filledChoices indices
      * }
-     *
-     * If fewer than 2 filled choices, it still works (predicts what's available).
      */
     function predict2026ForChoiceSet(years, resultChoices, filledChoices) {
-      // We only use historical years (exclude any pre-existing pred column)
-      const histYears = (years || []).filter(y => Number.isFinite(y));
-
-      // Extract series for P1, and conditional q2/q3
-      const P1Series = [];
-      const q2Series = [];
-      const q3Series = [];
-
-      function getP(choiceIdx, year) {
+      function getPredicted(choiceIdx) {
         const bc = resultChoices[choiceIdx];
         if (!bc) return null;
-        const oddsByYear = bc.odds_by_year || {};
-        const v = oddsByYear[year];
-        return (v === null || v === undefined) ? null : v; // v is already 0..1
+        const v = bc.predicted;
+        return (v === null || v === undefined || !Number.isFinite(v)) ? null : clamp(v, 0, 1);
       }
 
-      // Build per-year data where available for the ranked set (up to 3)
-      for (const y of histYears.slice().sort((a, b) => a - b)) {
-        const P1 = filledChoices[0] ? getP(0, y) : null;
-        const P2 = filledChoices[1] ? getP(1, y) : null;
-        const P3 = filledChoices[2] ? getP(2, y) : null;
-
-        if (Number.isFinite(P1)) {
-          P1Series.push({ year: y, p: clamp(P1, 0, 1) });
-        }
-
-        // Conditional for choice 2 (if choice 2 exists)
-        if (filledChoices[1] && Number.isFinite(P1) && Number.isFinite(P2)) {
-          const denom2 = 1 - P1;
-          if (denom2 > 1e-9) {
-            q2Series.push({ year: y, p: clamp(P2 / denom2, 0, 1) });
-          }
-        }
-
-        // Conditional for choice 3 (if choice 3 exists)
-        if (filledChoices[2] && Number.isFinite(P1) && Number.isFinite(P2) && Number.isFinite(P3)) {
-          const denom3 = 1 - P1 - P2;
-          if (denom3 > 1e-9) {
-            q3Series.push({ year: y, p: clamp(P3 / denom3, 0, 1) });
-          }
-        }
-      }
-
-      // Forecast
-      const P1Hat = filledChoices[0] ? forecastProbLogit(P1Series, PREDICT_YEAR, 3) : null;
+      const P1Hat = filledChoices[0] ? getPredicted(0) : null;
 
       // If only Choice 1 provided, total = P1
       if (filledChoices.length === 1) {
@@ -984,7 +901,7 @@
         return { P1: P1Hat, P2: null, P3: null, total: P1Hat, byChoice: [P1Hat] };
       }
 
-      const q2Hat = filledChoices[1] ? forecastProbLogit(q2Series, PREDICT_YEAR, 3) : null;
+      const q2Hat = filledChoices[1] ? getPredicted(1) : null;
       if (P1Hat == null || q2Hat == null) return null;
 
       const P2Hat = clamp((1 - P1Hat) * q2Hat, 0, 1);
@@ -995,7 +912,7 @@
         return { P1: P1Hat, P2: P2Hat, P3: null, total, byChoice: [P1Hat, P2Hat] };
       }
 
-      const q3Hat = filledChoices[2] ? forecastProbLogit(q3Series, PREDICT_YEAR, 3) : null;
+      const q3Hat = filledChoices[2] ? getPredicted(2) : null;
       if (q3Hat == null) return null;
 
       const remAfter2 = clamp(1 - P1Hat - P2Hat, 0, 1);
@@ -1276,8 +1193,10 @@
             ⓘ
             <span class="tooltip" role="tooltip">
               These are the estimated odds of winning each of your choices.
-              Odds are predicted using recent trends and adjusted to reflect
-              how the lottery processes first, second, and third choices.
+              Each is the average of recent years' results for that zone,
+              date, and group size (smoothed with the same weekday one week
+              either side), adjusted to reflect how the lottery processes
+              first, second, and third choices.
             </span>
           </span>
         `;
@@ -1444,22 +1363,6 @@
     let hmOdds = null;       // predicted prob by ISO date for the open heatmap
     let hmRequestId = 0;     // guards against stale fetch responses
 
-    // Turn per-year odds into a single predicted probability per date,
-    // using the same logit-linear trend as the main prediction.
-    function hmPredictAll(oddsByDate) {
-      const out = {};
-      for (const [iso, byYear] of Object.entries(oddsByDate)) {
-        const series = [];
-        for (const [y, p] of Object.entries(byYear)) {
-          if (p !== null && Number.isFinite(p)) {
-            series.push({ year: Number(y), p: clamp(p, 0, 1) });
-          }
-        }
-        out[iso] = forecastProbLogit(series, PREDICT_YEAR, 3);
-      }
-      return out;
-    }
-
     function hmColorClass(p) {
       if (p == null) return 'hm-nodata';
       if (p >= 0.30) return 'hm-green';
@@ -1599,7 +1502,9 @@
             return;
           }
           const data = await response.json();
-          heatmapCache[cacheKey] = hmPredictAll(data.odds_by_date || {});
+          // The server predicts each date with the same estimator as the
+          // main results (app/odds_engine.py); null means no data.
+          heatmapCache[cacheKey] = data.predicted_by_date || {};
         } catch (err) {
           console.error(err);
           if (requestId === hmRequestId) {
