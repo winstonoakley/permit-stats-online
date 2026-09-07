@@ -382,10 +382,78 @@ reminder that the top bucket is driven by whether anyone else applies.
 
 ### 6.4 Not changed
 
-- `coregs` is still the handcrafted table (H5). It only matters for Core
-  dates missing a group-size row and would need re-deriving from the data.
+- `coregs` was still the handcrafted table (H5) at this point; see section 7.
 - Non-Core zones still ignore group size (H4); that is a property of the
   database, not the estimator.
 - No pooling toward a zone-month baseline was added (H2). The neighbour
   kernel does part of that job; a proper shrinkage model is a possible next
   step if the top bucket drifts again when 2027 actuals arrive.
+
+## 7. `coregs` re-derived from the data (2026-09-07)
+
+### 7.1 What changed
+
+`coregs` in `app/odds_engine.py` is now the median of `odds(g) / odds(g+1)`
+over 2024 to 2026 Core dates where both sizes have `obs >= 3`:
+
+| Step | old | new | n (2024 to 2026) |
+|---|---|---|---|
+| 1 to 2 | 4.64 | 2.94 | 238 |
+| 2 to 3 | 1.41 | 1.24 | 418 |
+| 3 to 4 | 1.15 | 1.12 | 420 |
+| 4 to 5 | 1.18 | 1.12 | 404 |
+| 5 to 6 | 1.07 | 1.07 | 400 |
+| 6 to 7 | 1.20 | 1.12 | 125 |
+| 7 to 8 | 1.03 | 1.00 | 126 |
+
+`derive_coregs.py` reproduces the table and the test below; run it again
+when a new data year is added. `sim_version` is now `v1.1.1`.
+
+### 7.2 How often the table is used
+
+The scaling path fires more often than section 4 suggested. Every year has
+170 Core dates and 165 to 199 missing (date, size) rows; of those, 43 to 67
+per year are sizes below the smallest observed size (almost always a missing
+group-of-1 row) and 22 to 45 are above the largest. Those are the cases that
+go through `coregs`; the 75 to 94 interior gaps are linearly interpolated
+and are unaffected.
+
+### 7.3 Test
+
+The random backtest cannot measure this: it rarely samples a Core date
+with a missing endpoint size, and when it does the target year's "actual"
+is itself produced by `coreodds1()` with the same table. So the table was
+tested directly. On every Core date, the smallest and the largest observed
+group size were hidden in turn and re-estimated through `coreodds1()` from
+the remaining rows, then scored against the hidden row (`obs >= 3`).
+
+Out of sample, table derived from 2022 to 2025 and tested on 2026:
+
+| Table | n | MAE | Bias |
+|---|---|---|---|
+| Old handcrafted | 255 | 2.02 pp | +1.82 pp |
+| Derived 2022 to 2025 | 255 | 0.87 pp | +0.47 pp |
+
+The error is concentrated in the group-of-1 case, which is where the old
+4.64 factor bites: 96 hidden size-1 rows, MAE 4.69 pp / bias +4.63 pp with
+the old table, 1.78 pp / +1.04 pp with the derived one. The "above" side
+(hidden size 8) was already accurate under both tables (0.27 pp), because
+the 7 to 8 ratio is close to 1 either way.
+
+All years 2022 to 2026 with the final 2024 to 2026 table (partly
+in-sample): old 1.34 pp MAE / +1.08 pp bias, new 0.66 pp / -0.04 pp
+(n = 1227). Without the `obs` filter on the target: old 2.81 pp / +1.88 pp,
+new 1.66 pp / -0.31 pp (n = 1652).
+
+The full random backtest is unchanged within noise (2025: MAE 5.14 to
+5.15 pp, Brier 0.01031 to 0.01028; 2026: MAE 5.02 to 5.02 pp, Brier 0.00828
+to 0.00831).
+
+### 7.4 Still not changed
+
+- Non-Core group size (H4): left as is, group size does not matter outside
+  Core.
+- `obs = 0` rows stay a certain 100% (H3): if nobody applied, it is a
+  guaranteed win.
+- Shrinkage toward a pooled baseline (H2): deferred until 2027 actuals are
+  available to calibrate against.

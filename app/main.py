@@ -302,7 +302,7 @@ def estimate_odds(payload: OddsRequest, request: Request):
     browser = payload.browser
     os_name = payload.os_name
     latency_ms = payload.latency_ms
-    sim_version = "v1.1.0"  # bump this when you change the algorithm (v1.1.0: server-side smoothed predictor)
+    sim_version = "v1.1.1"  # bump this when you change the algorithm (v1.1.0: server-side smoothed predictor; v1.1.1: data-derived coregs)
     referrer = request.headers.get("referer")
 
     # ---- Log this "Get Table" event into analytics.db (best-effort) ----

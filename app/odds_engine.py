@@ -32,8 +32,12 @@ def finddateid(d):
     r = cur.fetchall()
     return r[0][0]
 
-# Building the Core zone group size scaling dictionary
-coregs = {1:4.64, 2:1.41, 3:1.15, 4:1.18, 5:1.07, 6:1.2, 7:1.03}
+# Core zone group size scaling: coregs[g] = odds(g) / odds(g + 1). Used by
+# coreodds1() only when a date has no row for the requested size and it lies
+# outside the observed sizes. Values are the median ratio over 2024-2026 Core
+# dates where both sizes have obs >= 3; re-derive with derive_coregs.py when
+# a new data year is added.
+coregs = {1:2.94, 2:1.24, 3:1.12, 4:1.12, 5:1.07, 6:1.12, 7:1.00}
 
 # Lottery season bounds (month, day) and the neighbour-smoothing kernel used by
 # the calibrated predictor (see predict_first_choice at the bottom of this file).
