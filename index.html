@@ -1360,7 +1360,9 @@
     const heatmapCache = {}; // "zone|groupSize" -> {isoDate: predictedProb or null}
     let hmChoiceNum = null;  // which choice's date field the heatmap fills
     let hmMonth = HM_MIN_MONTH; // month index currently displayed
-    let hmOdds = null;       // predicted prob by ISO date for the open heatmap
+    let hmOdds = null;       // first-choice predicted prob by ISO date for the open heatmap
+    let hmFactor = null;     // probability left after higher-priority choices (null = none)
+    let hmFactorNote = '';   // status line explaining how the tiles are conditioned
     let hmRequestId = 0;     // guards against stale fetch responses
 
     function hmColorClass(p) {
@@ -1403,7 +1405,10 @@
           cell.classList.add('hm-out');
           cell.disabled = true;
         } else {
-          const p = hmOdds ? hmOdds[iso] : null;
+          // Tiles show what the Prediction Results box would show for this
+          // date: first-choice odds scaled by what higher choices leave over.
+          const p0 = hmOdds ? hmOdds[iso] : null;
+          const p = (p0 == null) ? null : (hmFactor == null ? p0 : clamp(p0 * hmFactor, 0, 1));
           cell.classList.add(hmColorClass(p));
           // Odds are displayed inside the tile rather than in a hover tooltip.
           if (hmOdds) {
@@ -1445,6 +1450,71 @@
       hmPopover.style.top = (window.scrollY + rect.bottom + 8) + 'px';
     }
 
+    /**
+     * For a Choice 2 or 3 calendar, work out how much probability the
+     * higher-priority choices leave over, using the same server predictions
+     * and the same conditioning as predict2026ForChoiceSet. The calendar's
+     * per-date odds are cached unconditioned; this scalar is applied at
+     * render time, so it costs one quick /estimate_odds call per open.
+     *
+     * Returns { factor, note }; factor is null when no conditioning applies
+     * (Choice 1, or a higher choice is incomplete / has no data).
+     */
+    async function hmConditioning(choiceNum) {
+      if (choiceNum <= 1) return { factor: null, note: '' };
+
+      const higher = [];
+      for (let n = 1; n < choiceNum; n++) {
+        const zone = document.getElementById('zone' + n).value.trim();
+        const gs = document.getElementById('group_size' + n).value;
+        const iso = document.getElementById('date' + n).dataset.iso || '';
+        if (!zone || !gs || !iso) {
+          return {
+            factor: null,
+            note: `Showing first-choice odds. Complete Choice ${n} to adjust for it.`
+          };
+        }
+        const [, monthStr, dayStr] = iso.split('-');
+        higher.push({
+          zone: zone,
+          month: parseInt(monthStr, 10),
+          day: parseInt(dayStr, 10),
+          group_size: parseInt(gs, 10)
+        });
+      }
+
+      const labels = higher.map((_, i) => `Choice ${i + 1}`).join(' and ');
+      try {
+        const response = await fetch(API_BASE_URL + '/estimate_odds', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            permit_year: PERMIT_YEAR,
+            data_years: [2022, 2023, 2024, 2025, 2026],
+            choices: higher,
+            log_event: false // helper lookup, not a user "Fetch Results"
+          })
+        });
+        if (!response.ok) {
+          return { factor: null, note: `Showing first-choice odds (could not load ${labels}).` };
+        }
+        const data = await response.json();
+        const preds = (data.choices || []).map(
+          (c) => (c.predicted == null || !Number.isFinite(c.predicted)) ? null : clamp(c.predicted, 0, 1)
+        );
+        if (preds.length !== higher.length || preds.some((p) => p == null)) {
+          return { factor: null, note: `Showing first-choice odds (no data for ${labels}).` };
+        }
+        // Probability remaining after each higher choice, in priority order.
+        let remaining = 1;
+        for (const p of preds) remaining = clamp(remaining * (1 - p), 0, 1);
+        return { factor: remaining, note: `Adjusted for ${labels}` };
+      } catch (err) {
+        console.error(err);
+        return { factor: null, note: `Showing first-choice odds (could not load ${labels}).` };
+      }
+    }
+
     async function openHeatmap(choiceNum, btn) {
       // Clicking the same button while open closes the dropdown.
       if (!hmPopover.hidden && hmChoiceNum === choiceNum) {
@@ -1465,6 +1535,7 @@
       const groupSize = parseInt(gsValue, 10);
 
       hmChoiceNum = choiceNum;
+      const requestId = ++hmRequestId;
 
       // Open on the month of the already-chosen date, if any; otherwise July.
       const dateVal = document.getElementById('date' + choiceNum).dataset.iso || '';
@@ -1476,14 +1547,20 @@
 
       hmPopover.hidden = false;
       hmOdds = null;
+      hmFactor = null;
+      hmFactorNote = '';
       hmGrid.innerHTML = '';
       renderHmHeader();
       positionHeatmap(btn);
 
+      hmStatus.textContent = 'Please wait...';
+      const conditioning = await hmConditioning(choiceNum);
+      if (requestId !== hmRequestId) return; // a newer heatmap was opened
+      hmFactor = conditioning.factor;
+      hmFactorNote = conditioning.note;
+
       const cacheKey = zone.toLowerCase() + '|' + groupSize;
       if (!heatmapCache[cacheKey]) {
-        const requestId = ++hmRequestId;
-        hmStatus.textContent = 'Please wait...';
         try {
           const response = await fetch(API_BASE_URL + '/heatmap_odds', {
             method: 'POST',
@@ -1516,7 +1593,7 @@
       }
 
       hmOdds = heatmapCache[cacheKey];
-      hmStatus.textContent = '';
+      hmStatus.textContent = hmFactorNote;
       renderHeatmapMonth();
     }
 

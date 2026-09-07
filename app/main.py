@@ -162,6 +162,10 @@ class OddsRequest(BaseModel):
     os_name: str | None = None
     latency_ms: int | None = None
 
+    # False for helper lookups (e.g. the heatmap calendar conditioning on
+    # higher-priority choices) so they are not logged as user "Fetch Results".
+    log_event: bool = True
+
 class OddsResponse(BaseModel):
     years: List[int]
     choices: List[dict]  # keep loose for now; can tighten later
@@ -302,27 +306,28 @@ def estimate_odds(payload: OddsRequest, request: Request):
     referrer = request.headers.get("referer")
 
     # ---- Log this "Get Table" event into analytics.db (best-effort) ----
-    try:
-        log_query_event(
-            inputs=inputs,
-            results=result,
-            status="success",
-            event_type="get_table",
-            session_id=session_id,
-            user_id=None,
-            sim_version=sim_version,
-            query_index_in_session=query_index_in_session,
-            device_type=device_type,
-            browser=browser,
-            os_name=os_name,
-            country=None,
-            region=None,
-            referrer=referrer,
-            latency_ms=latency_ms,
-        )
-    except Exception as e:
-        # Do not break the main functionality if analytics fails
-        print("Analytics logging failed:", e)
+    if payload.log_event:
+        try:
+            log_query_event(
+                inputs=inputs,
+                results=result,
+                status="success",
+                event_type="get_table",
+                session_id=session_id,
+                user_id=None,
+                sim_version=sim_version,
+                query_index_in_session=query_index_in_session,
+                device_type=device_type,
+                browser=browser,
+                os_name=os_name,
+                country=None,
+                region=None,
+                referrer=referrer,
+                latency_ms=latency_ms,
+            )
+        except Exception as e:
+            # Do not break the main functionality if analytics fails
+            print("Analytics logging failed:", e)
 
     # ---- Return the response as before ----
     return OddsResponse(**result)
