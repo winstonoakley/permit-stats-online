@@ -1,76 +1,82 @@
-CREATE TABLE IF NOT EXISTS query_events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+-- Analytics event store, schema version 2.
+--
+-- Applied by app/analytics.py on every start (every statement is
+-- idempotent) and versioned with PRAGMA user_version. A v1 file (the old
+-- query_events table) is migrated forward by app/analytics.py, which keeps
+-- the original table as query_events_v1.
+--
+-- Privacy: no IP address and no raw user-agent string are stored anywhere.
+--
+-- Known event types (validated in code, not here, so a new type is a code
+-- change only): page_view, get_table, heatmap_view, error, ad_view.
 
-    -- Identity / grouping
-    session_id TEXT NOT NULL,
-    user_id   TEXT,                          -- null for now if you don’t have logins
+CREATE TABLE IF NOT EXISTS events (
+    id              INTEGER PRIMARY KEY,
+    schema_version  INTEGER NOT NULL DEFAULT 2,       -- 1 for rows imported from query_events
+    event_type      TEXT    NOT NULL,
+    event_time_utc  TEXT    NOT NULL,                 -- ISO 8601, server clock
+    source          TEXT    NOT NULL DEFAULT 'page'
+                    CHECK (source IN ('page', 'api', 'test')),
+    status          TEXT    NOT NULL DEFAULT 'success'
+                    CHECK (status IN ('success', 'error')),
 
-    -- Event metadata
-    event_time_utc TEXT NOT NULL,            -- ISO8601 timestamp (e.g., 2025-12-12T03:21:45Z)
-    event_type     TEXT NOT NULL DEFAULT 'get_table',
+    -- identity: NULL for api/test rows
+    visitor_id      TEXT,                             -- random id, lives in the browser for up to ~13 months
+    visit_id        TEXT,                             -- random id, new after 30 minutes of inactivity
+    seq_in_visit    INTEGER,                          -- 1, 2, 3 ... within the visit
+    is_new_visitor  INTEGER,                          -- 1 on the first event of a new visitor_id
 
-    -- Context
-    country   TEXT,                          -- optional, can be null
-    region    TEXT,                          -- optional, can be null
-    device_type TEXT,                        -- 'desktop' | 'tablet' | 'mobile' | etc.
-    browser   TEXT,
-    os        TEXT,
-    referrer  TEXT,
+    -- page context (page_view only)
+    page_path       TEXT,
+    page_referrer   TEXT,                             -- origin + path, query string removed
+    utm_source      TEXT,
+    utm_medium      TEXT,
+    utm_campaign    TEXT,
+    viewport_w      INTEGER,
 
-    -- Simulation / app versioning
-    sim_version            TEXT,             -- e.g., 'v1.0.3'
-    query_index_in_session INTEGER,          -- 1, 2, 3… for this session
+    -- coarse geography from the proxy's headers
+    country         TEXT,                             -- ISO 3166-1 alpha-2
+    region          TEXT,
+    geo_source      TEXT,                             -- header the values came from
 
-    -- Inputs / results (JSON blobs)
-    inputs_json  TEXT NOT NULL,              -- JSON string of all inputs
-    results_json TEXT NOT NULL,              -- JSON string of odds table & total odds
+    -- parsed device
+    device_type     TEXT,                             -- mobile | tablet | desktop | bot | other
+    os_family       TEXT,
+    browser_family  TEXT,
+    browser_major   INTEGER,
+    is_bot          INTEGER NOT NULL DEFAULT 0,
 
-    -- Diagnostics
-    latency_ms INTEGER,                      -- time from click to response
-    status     TEXT NOT NULL                 -- 'success' | 'error' | etc.
+    -- versions and timing
+    app_version     TEXT,                             -- git commit of the deploy
+    sim_version     TEXT,                             -- odds engine version (get_table, heatmap_view)
+    server_ms       INTEGER,                          -- engine time measured on the server
+    client_ms       INTEGER,                          -- click-to-response measured by the page
+
+    -- small type-specific payload, never the full engine result
+    detail_json     TEXT                              -- get_table: permit_year, data_years, n_choices, total_predicted
+                                                      -- heatmap_view: zone, group_size, month, from_choice
+                                                      -- error: endpoint, method, http_status, message
+                                                      -- ad_view: whatever the ads workflow defines
 );
 
-CREATE INDEX IF NOT EXISTS idx_query_events_session_time
-    ON query_events (session_id, event_time_utc);
+CREATE INDEX IF NOT EXISTS ix_events_time    ON events (event_time_utc);
+CREATE INDEX IF NOT EXISTS ix_events_type    ON events (event_type, event_time_utc);
+CREATE INDEX IF NOT EXISTS ix_events_visitor ON events (visitor_id, event_time_utc);
+CREATE INDEX IF NOT EXISTS ix_events_visit   ON events (visit_id, seq_in_visit);
 
-CREATE INDEX IF NOT EXISTS idx_query_events_event_type
-    ON query_events (event_type);
-
--- Table to log each "Get Table" query event
-CREATE TABLE IF NOT EXISTS query_events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-
-    -- Identity / grouping (can be NULL for now if you don't wire them yet)
-    session_id TEXT,
-    user_id    TEXT,
-
-    -- Event metadata
-    event_time_utc TEXT NOT NULL,
-    event_type     TEXT NOT NULL DEFAULT 'get_table',
-
-    -- Context (optional)
-    country     TEXT,
-    region      TEXT,
-    device_type TEXT,
-    browser     TEXT,
-    os          TEXT,
-    referrer    TEXT,
-
-    -- Simulation / app versioning
-    sim_version            TEXT,
-    query_index_in_session INTEGER,
-
-    -- Inputs / results (JSON blobs)
-    inputs_json  TEXT NOT NULL,
-    results_json TEXT NOT NULL,
-
-    -- Diagnostics
-    latency_ms INTEGER,
-    status     TEXT NOT NULL
+-- One row per submitted choice of a get_table event, in priority order.
+CREATE TABLE IF NOT EXISTS query_choices (
+    id            INTEGER PRIMARY KEY,
+    event_id      INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    choice_rank   INTEGER NOT NULL,                   -- 1 = first choice
+    zone          TEXT    NOT NULL,
+    permit_date   TEXT,                               -- YYYY-MM-DD in the permit year; NULL if month/day is not a date
+    month         INTEGER NOT NULL,
+    day           INTEGER NOT NULL,
+    group_size    INTEGER NOT NULL,
+    predicted     REAL,                               -- engine's first-choice probability for this choice
+    conditioned   REAL,                               -- after priority conditioning: what the user was shown
+    UNIQUE (event_id, choice_rank)
 );
 
-CREATE INDEX IF NOT EXISTS idx_query_events_event_time
-    ON query_events (event_time_utc);
-
-CREATE INDEX IF NOT EXISTS idx_query_events_event_type
-    ON query_events (event_type);
+CREATE INDEX IF NOT EXISTS ix_choices_zone_date ON query_choices (zone, permit_date);

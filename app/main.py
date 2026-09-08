@@ -1,24 +1,29 @@
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
-import os
-from pydantic import BaseModel
-from datetime import date, datetime, timezone
-import sqlite3
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
+import hmac
 import json
+import os
+import re
+import sqlite3
+import sys
+import time
+from datetime import date
 from pathlib import Path
-from pydantic import BaseModel, Field
-from typing import List
+from pydantic import BaseModel, Field, ValidationError, field_validator
+from typing import Any, Dict, List, Literal, Optional
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from . import analytics
 from .odds_engine import Choice, estimate_odds_for_choice_set, estimate_season_odds
 
 
 limiter = Limiter(key_func=get_remote_address)
 app = FastAPI()
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Restrict CORS to the deployment origin; fall back to * for local dev.
 # Set ALLOWED_ORIGIN env var in production (e.g. "https://yourdomain.com").
@@ -28,101 +33,115 @@ app.add_middleware(
     allow_origins=[_allowed_origin],
     allow_credentials=True,
     allow_methods=["POST", "GET"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 DB_PATH = Path("stats.db")
 
 # Paths
-BASE_DIR = Path(__file__).resolve().parent.parent   # project root (where index.html & schema.sql live)
-DB_DIR = BASE_DIR / "odds_database"
-DB_DIR.mkdir(exist_ok=True)
+BASE_DIR = Path(__file__).resolve().parent.parent   # project root (where index.html lives)
+INDEX_PATH = BASE_DIR / "index.html"
 
-ANALYTICS_DB_PATH = DB_DIR / "analytics.db"
-SCHEMA_PATH = BASE_DIR / "schema.sql"
+# Versions recorded with each analytics event.
+SIM_VERSION = "v1.1.1"  # bump this when you change the algorithm (v1.1.0: server-side smoothed predictor; v1.1.1: data-derived coregs)
+APP_VERSION = (os.getenv("RAILWAY_GIT_COMMIT_SHA") or os.getenv("APP_VERSION") or "")[:12] or None
 
-
-def init_logging_db():
-    """Create the analytics.db file and ensure query_events table exists."""
-    conn = sqlite3.connect(ANALYTICS_DB_PATH)
-    try:
-        with SCHEMA_PATH.open("r", encoding="utf-8") as f:
-            schema_sql = f.read()
-        conn.executescript(schema_sql)
-        conn.commit()
-    finally:
-        conn.close()
+# Create or migrate the analytics database once at startup. Failure must not
+# stop the site; events are simply not recorded until it is fixed.
+try:
+    analytics.init_db()
+except Exception as e:
+    print("Analytics init failed:", e, file=sys.stderr)
 
 
-# Run this once when the app starts
-init_logging_db()
+# --- Analytics helpers -------------------------------------------------------
 
-def log_query_event(
-    inputs: dict,
-    results: dict,
-    status: str = "success",
-    event_type: str = "get_table",
-    session_id: str | None = None,
-    user_id: str | None = None,
-    sim_version: str | None = None,
-    query_index_in_session: int | None = None,
-    device_type: str | None = None,
-    browser: str | None = None,
-    os_name: str | None = None,
-    country: str | None = None,
-    region: str | None = None,
-    referrer: str | None = None,
-    latency_ms: int | None = None,
-) -> None:
-    """Insert a single query log row into the analytics database."""
-    # Ensure we never violate NOT NULL on session_id
-    if session_id is None:
-        session_id = "anonymous"
-        
-    event_time_utc = datetime.now(timezone.utc).isoformat()
+def _visitor_from(m: Any) -> Dict[str, Any]:
+    """Identity fields from a request model; falls back to the v1 session_id
+    an older cached page might still send."""
+    return {
+        "visitor_id": getattr(m, "visitor_id", None) or getattr(m, "session_id", None),
+        "visit_id": getattr(m, "visit_id", None),
+        "seq_in_visit": getattr(m, "seq_in_visit", None),
+        "is_new_visitor": getattr(m, "is_new_visitor", None),
+    }
 
-    conn = sqlite3.connect(ANALYTICS_DB_PATH)
-    try:
-        conn.execute(
-            """
-            INSERT INTO query_events (
-                session_id, user_id,
-                event_time_utc, event_type,
-                country, region, device_type, browser, os, referrer,
-                sim_version, query_index_in_session,
-                inputs_json, results_json,
-                latency_ms, status
-            ) VALUES (
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-            )
-            """,
-            (
-                session_id,
-                user_id,
-                event_time_utc,
-                event_type,
-                country,
-                region,
-                device_type,
-                browser,
-                os_name,
-                referrer,
-                sim_version,
-                query_index_in_session,
-                json.dumps(inputs),
-                json.dumps(results),
-                latency_ms,
-                status,
-            ),
+
+def _log_request_error(request: Request, http_status: int, message: str) -> None:
+    """Record a failed request. Never includes the request body."""
+    analytics.log_event(
+        "error",
+        source="page" if request.headers.get("referer") else "api",
+        status="error",
+        context=analytics.context_from_headers(request.headers),
+        app_version=APP_VERSION,
+        detail={
+            "endpoint": request.url.path,
+            "method": request.method,
+            "http_status": http_status,
+            "message": message[:200],
+        },
+    )
+
+
+def _choices_for_log(result_choices: List[Dict[str, Any]]):
+    """Per-choice predicted and priority-conditioned probabilities, mirroring
+    the page: P2 is scaled by (1 - P1), P3 by (1 - P1 - P2)."""
+    remaining = 1.0
+    total = 0.0
+    out = []
+    for c in result_choices:
+        p = c.get("predicted")
+        conditioned = None
+        if isinstance(p, (int, float)) and p == p:
+            p = max(0.0, min(1.0, float(p)))
+            conditioned = remaining * p
+            remaining = max(0.0, remaining - conditioned)
+            total += conditioned
+        else:
+            p = None
+        out.append({
+            "zone": c.get("zone"), "month": c.get("month"), "day": c.get("day"),
+            "group_size": c.get("group_size"), "predicted": p, "conditioned": conditioned,
+        })
+    return out, round(min(total, 1.0), 6)
+
+
+def require_analytics_token(request: Request) -> None:
+    """Bearer-token guard for the analytics read endpoints. Fails closed when
+    ANALYTICS_TOKEN is not configured."""
+    expected = os.getenv("ANALYTICS_TOKEN")
+    if not expected:
+        raise HTTPException(status_code=503, detail="ANALYTICS_TOKEN is not configured")
+    header = request.headers.get("authorization", "")
+    supplied = header[7:].strip() if header[:7].lower() == "bearer " else ""
+    if not supplied or not hmac.compare_digest(supplied, expected):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or missing analytics token",
+            headers={"WWW-Authenticate": "Bearer"},
         )
-        conn.commit()
-    finally:
-        conn.close()
 
 
-# Path to the repo root (where index.html lives)
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-INDEX_PATH = os.path.join(BASE_DIR, "index.html")
+# --- Error handlers (each also records an `error` event, best-effort) -------
+
+@app.exception_handler(RequestValidationError)
+async def _on_validation_error(request: Request, exc: RequestValidationError):
+    _log_request_error(request, 422, "validation_error")
+    return await request_validation_exception_handler(request, exc)
+
+
+@app.exception_handler(RateLimitExceeded)
+async def _on_rate_limited(request: Request, exc: RateLimitExceeded):
+    _log_request_error(request, 429, "rate_limited")
+    return _rate_limit_exceeded_handler(request, exc)
+
+
+@app.exception_handler(Exception)
+async def _on_unhandled(request: Request, exc: Exception):
+    _log_request_error(request, 500, type(exc).__name__)
+    return JSONResponse({"detail": "Internal Server Error"}, status_code=500)
+
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_index():
@@ -149,32 +168,71 @@ class ChoiceInput(BaseModel):
     day: int = Field(ge=1, le=31)
     group_size: int = Field(ge=1, le=8)
 
-class OddsRequest(BaseModel):
-    permit_year: int = 2025
-    data_years: List[int] = [2022, 2023, 2024, 2025, 2026]
-    choices: List[ChoiceInput]  # up to 3
 
-    # Optional metadata from the frontend
-    session_id: str | None = None
-    query_index: int | None = None
-    device_type: str | None = None
-    browser: str | None = None
-    os_name: str | None = None
-    latency_ms: int | None = None
-
+class VisitorMeta(BaseModel):
+    """Optional analytics identity the page attaches to its requests."""
+    visitor_id: Optional[str] = Field(None, max_length=64)
+    visit_id: Optional[str] = Field(None, max_length=64)
+    seq_in_visit: Optional[int] = Field(None, ge=0, le=1_000_000)
+    is_new_visitor: Optional[bool] = None
     # False for helper lookups (e.g. the heatmap calendar conditioning on
     # higher-priority choices) so they are not logged as user "Fetch Results".
     log_event: bool = True
 
+
+class OddsRequest(VisitorMeta):
+    permit_year: int = 2025
+    data_years: List[int] = [2022, 2023, 2024, 2025, 2026]
+    choices: List[ChoiceInput]  # up to 3
+
+    # v1 metadata, still accepted from older cached pages. session_id stands
+    # in for visitor_id; browser (a raw UA string) is only a fallback when the
+    # User-Agent header is missing; the rest is ignored.
+    session_id: Optional[str] = None
+    query_index: Optional[int] = None
+    device_type: Optional[str] = None
+    browser: Optional[str] = None
+    os_name: Optional[str] = None
+    latency_ms: Optional[int] = None
+
 class OddsResponse(BaseModel):
     years: List[int]
     choices: List[dict]  # keep loose for now; can tighten later
+    event_id: Optional[int] = None  # analytics row for this query, for the timing beacon
 
-class HeatmapRequest(BaseModel):
+class HeatmapRequest(VisitorMeta):
     zone: str
     group_size: int = Field(ge=1, le=8)
     permit_year: int = 2027
     data_years: List[int] = [2022, 2023, 2024, 2025, 2026]
+    from_choice: Optional[int] = Field(None, ge=1, le=3)   # which choice's calendar was opened
+    month: Optional[int] = Field(None, ge=1, le=12)        # month shown first
+
+
+class ClientPage(BaseModel):
+    path: Optional[str] = Field(None, max_length=256)
+    referrer: Optional[str] = Field(None, max_length=1024)
+    utm_source: Optional[str] = Field(None, max_length=128)
+    utm_medium: Optional[str] = Field(None, max_length=128)
+    utm_campaign: Optional[str] = Field(None, max_length=128)
+    viewport_w: Optional[int] = Field(None, ge=0, le=20000)
+
+
+class ClientEvent(VisitorMeta):
+    """Body of POST /log_event. `timing` is not an event: it fills client_ms
+    on an existing get_table row."""
+    event_type: Literal["page_view", "error", "ad_view", "timing"]
+    page: Optional[ClientPage] = None
+    client_ms: Optional[int] = Field(None, ge=0, le=600_000)
+    event_id: Optional[int] = Field(None, ge=1)
+    detail: Optional[Dict[str, Any]] = None
+
+    @field_validator("detail")
+    @classmethod
+    def _detail_is_small(cls, v):
+        if v is not None and len(json.dumps(v, default=str)) > 2000:
+            raise ValueError("detail too large")
+        return v
 
 
 # --- Helper function to query the database ---
@@ -270,67 +328,45 @@ def estimate_odds(payload: OddsRequest, request: Request):
 
     # Folder where your odds_YYYY.db files live
     # Use environment variable if set, otherwise fall back to local folder
-    db_dir = os.getenv("ODDS_DB_DIR") or os.path.join(BASE_DIR, "odds_databases")
-
-    # ---- Build "inputs" dict for logging ----
-    inputs = {
-        "permit_year": payload.permit_year,
-        "data_years": payload.data_years,
-        "choices": [
-            {
-                "zone": c.zone,
-                "month": c.month,
-                "day": c.day,
-                "group_size": c.group_size,
-            }
-            for c in payload.choices
-        ],
-    }
+    db_dir = os.getenv("ODDS_DB_DIR") or os.path.join(str(BASE_DIR), "odds_databases")
 
     # ---- Run the odds engine (your existing logic) ----
+    t0 = time.perf_counter()
     result = estimate_odds_for_choice_set(
         permit_year=payload.permit_year,
         choices=choices,
         data_years=payload.data_years,
         db_dir=db_dir,
     )
+    server_ms = int((time.perf_counter() - t0) * 1000)
 
-    # ---- Extract metadata from payload & request ----
-    session_id = payload.session_id
-    query_index_in_session = payload.query_index
-    device_type = payload.device_type
-    browser = payload.browser
-    os_name = payload.os_name
-    latency_ms = payload.latency_ms
-    sim_version = "v1.1.1"  # bump this when you change the algorithm (v1.1.0: server-side smoothed predictor; v1.1.1: data-derived coregs)
-    referrer = request.headers.get("referer")
-
-    # ---- Log this "Get Table" event into analytics.db (best-effort) ----
+    # ---- Log this "Fetch Results" event (best-effort; log_event never raises) ----
+    event_id = None
     if payload.log_event:
-        try:
-            log_query_event(
-                inputs=inputs,
-                results=result,
-                status="success",
-                event_type="get_table",
-                session_id=session_id,
-                user_id=None,
-                sim_version=sim_version,
-                query_index_in_session=query_index_in_session,
-                device_type=device_type,
-                browser=browser,
-                os_name=os_name,
-                country=None,
-                region=None,
-                referrer=referrer,
-                latency_ms=latency_ms,
-            )
-        except Exception as e:
-            # Do not break the main functionality if analytics fails
-            print("Analytics logging failed:", e)
+        visitor = _visitor_from(payload)
+        log_choices, total_predicted = _choices_for_log(result["choices"])
+        event_id = analytics.log_event(
+            "get_table",
+            source="page" if visitor["visitor_id"] else "api",
+            visitor=visitor,
+            context=analytics.context_from_headers(request.headers, ua_fallback=payload.browser),
+            app_version=APP_VERSION,
+            sim_version=SIM_VERSION,
+            server_ms=server_ms,
+            client_ms=payload.latency_ms,
+            detail={
+                "permit_year": payload.permit_year,
+                "data_years": payload.data_years,
+                "n_choices": len(payload.choices),
+                "total_predicted": total_predicted,
+                "legacy_query_index": payload.query_index,
+            },
+            choices=log_choices,
+            permit_year=payload.permit_year,
+        )
 
-    # ---- Return the response as before ----
-    return OddsResponse(**result)
+    # ---- Return the response as before, plus the analytics row id ----
+    return OddsResponse(**result, event_id=event_id)
 
 
 @app.post("/heatmap_odds")
@@ -341,8 +377,9 @@ def heatmap_odds(payload: HeatmapRequest, request: Request):
     the lottery season, keyed by permit date, across all data years.
     Used by the frontend heatmap calendar.
     """
-    db_dir = os.getenv("ODDS_DB_DIR") or os.path.join(BASE_DIR, "odds_databases")
+    db_dir = os.getenv("ODDS_DB_DIR") or os.path.join(str(BASE_DIR), "odds_databases")
 
+    t0 = time.perf_counter()
     result = estimate_season_odds(
         zone=payload.zone,
         group_size=payload.group_size,
@@ -350,171 +387,108 @@ def heatmap_odds(payload: HeatmapRequest, request: Request):
         data_years=payload.data_years,
         db_dir=db_dir,
     )
+    server_ms = int((time.perf_counter() - t0) * 1000)
+
+    if payload.log_event:
+        visitor = _visitor_from(payload)
+        analytics.log_event(
+            "heatmap_view",
+            source="page" if visitor["visitor_id"] else "api",
+            visitor=visitor,
+            context=analytics.context_from_headers(request.headers),
+            app_version=APP_VERSION,
+            sim_version=SIM_VERSION,
+            server_ms=server_ms,
+            detail={
+                "zone": payload.zone,
+                "group_size": payload.group_size,
+                "permit_year": payload.permit_year,
+                "month": payload.month,
+                "from_choice": payload.from_choice,
+            },
+        )
     return result
 
 
-@app.get("/debug/analytics")
-def debug_analytics(limit: int = 10):
+@app.post("/log_event", status_code=204)
+@limiter.limit("60/minute")
+async def log_client_event(request: Request):
     """
-    Debug endpoint to inspect analytics.db.
-    Returns the most recent rows from query_events, including metadata.
+    Page-originated events: page_view, error, ad_view, and the `timing`
+    follow-up that records how long a query took from the visitor's side.
+    Sent with navigator.sendBeacon, which posts text/plain, so the body is
+    parsed by hand. Always answers 204 once the body is well-formed.
     """
-    if not ANALYTICS_DB_PATH.exists():
-        return {
-            "error": "analytics.db not found",
-            "path": str(ANALYTICS_DB_PATH),
-        }
-
-    conn = sqlite3.connect(ANALYTICS_DB_PATH)
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
-
+    raw = await request.body()
+    if len(raw) > 8192:
+        return Response(status_code=413)
     try:
-        cur.execute(
-            """
-            SELECT
-                id,
-                event_time_utc,
-                event_type,
-                status,
-                session_id,
-                query_index_in_session,
-                device_type,
-                browser,
-                os,
-                referrer,
-                sim_version,
-                latency_ms,
-                inputs_json,
-                results_json
-            FROM query_events
-            ORDER BY id DESC
-            LIMIT ?
-            """,
-            (limit,),
-        )
-        rows = [dict(row) for row in cur.fetchall()]
-    except sqlite3.OperationalError as e:
-        return {
-            "error": "SQLite error while querying query_events",
-            "details": str(e),
-            "db_path": str(ANALYTICS_DB_PATH),
-        }
-    finally:
-        conn.close()
+        event = ClientEvent.model_validate(json.loads(raw or b"{}"))
+    except (ValueError, ValidationError):
+        _log_request_error(request, 422, "validation_error")
+        return Response(status_code=422)
 
-    return {
-        "db_path": str(ANALYTICS_DB_PATH),
-        "row_count": len(rows),
-        "rows": rows,
-    }
+    visitor = _visitor_from(event)
+    if event.event_type == "timing":
+        if event.event_id and event.client_ms is not None and visitor["visitor_id"]:
+            analytics.set_client_ms(event.event_id, visitor["visitor_id"], event.client_ms)
+        return Response(status_code=204)
 
-@app.get("/analytics/summary")
+    analytics.log_event(
+        event.event_type,
+        source="page",
+        status="error" if event.event_type == "error" else "success",
+        visitor=visitor,
+        page=event.page.model_dump() if event.page else None,
+        context=analytics.context_from_headers(request.headers),
+        app_version=APP_VERSION,
+        client_ms=event.client_ms,
+        detail=event.detail,
+    )
+    return Response(status_code=204)
+
+
+# --- Analytics read endpoints (Bearer ANALYTICS_TOKEN) ---
+
+_ISO_PREFIX = re.compile(r"^\d{4}-\d{2}-\d{2}")
+
+
+@app.get("/analytics/export", dependencies=[Depends(require_analytics_token)])
+def analytics_export(
+    since: Optional[str] = Query(None, description="ISO 8601, inclusive"),
+    until: Optional[str] = Query(None, description="ISO 8601, exclusive"),
+    limit: int = Query(10000, ge=1, le=100000),
+):
+    """
+    Events as JSON Lines, oldest first, each with its query choices attached.
+    This is what the analysis pipeline pulls from.
+    """
+    for name, value in (("since", since), ("until", until)):
+        if value is not None and not _ISO_PREFIX.match(value):
+            raise HTTPException(status_code=400, detail=f"{name} must be ISO 8601 (YYYY-MM-DD...)")
+
+    def lines():
+        for ev in analytics.iter_events(since=since, until=until, limit=limit):
+            yield json.dumps(ev, default=str) + "\n"
+
+    return StreamingResponse(
+        lines(),
+        media_type="application/x-ndjson",
+        headers={"Content-Disposition": 'attachment; filename="events.jsonl"'},
+    )
+
+
+@app.get("/debug/analytics", dependencies=[Depends(require_analytics_token)])
+def debug_analytics(limit: int = Query(10, ge=1, le=500)):
+    """The most recent events, newest first."""
+    rows = list(analytics.iter_events(limit=limit, order="desc"))
+    return {"db_path": str(analytics.db_path()), "row_count": len(rows), "rows": rows}
+
+
+@app.get("/analytics/summary", dependencies=[Depends(require_analytics_token)])
 def analytics_summary():
-    """
-    Returns high-level usage statistics for the tool.
-    """
-    if not ANALYTICS_DB_PATH.exists():
-        return {"error": "analytics.db not found"}
-
-    conn = sqlite3.connect(ANALYTICS_DB_PATH)
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
-
+    """High-level usage statistics for the tool."""
     try:
-
-        # Total queries
-        cur.execute("SELECT COUNT(*) AS total_queries FROM query_events")
-        total_queries = cur.fetchone()["total_queries"]
-
-        # Unique sessions (approximate users)
-        cur.execute("SELECT COUNT(DISTINCT session_id) AS unique_sessions FROM query_events")
-        unique_sessions = cur.fetchone()["unique_sessions"]
-
-        avg_queries_per_session = (
-            total_queries / unique_sessions if unique_sessions else 0
-        )
-
-        # Pull all inputs JSON
-        cur.execute("SELECT inputs_json FROM query_events")
-        rows = cur.fetchall()
-
-        zone_counts = {}
-        group_size_counts = {}
-        month_counts = {}
-
-        for row in rows:
-            inputs = json.loads(row["inputs_json"])
-            choices = inputs.get("choices", [])
-
-            for c in choices:
-                zone = c.get("zone")
-                group_size = c.get("group_size")
-                month = c.get("month")
-
-                if zone:
-                    zone_counts[zone] = zone_counts.get(zone, 0) + 1
-
-                if group_size:
-                    group_size_counts[group_size] = group_size_counts.get(group_size, 0) + 1
-
-                if month:
-                    month_counts[month] = month_counts.get(month, 0) + 1
-
-        # Sort counts
-        top_zones = sorted(zone_counts.items(), key=lambda x: x[1], reverse=True)[:5]
-        top_group_sizes = sorted(group_size_counts.items(), key=lambda x: x[1], reverse=True)
-        top_months = sorted(month_counts.items(), key=lambda x: x[1], reverse=True)
-
-        return {
-            "db_path": str(ANALYTICS_DB_PATH),
-            "total_queries": total_queries,
-            "unique_sessions": unique_sessions,
-            "avg_queries_per_session": round(avg_queries_per_session, 2),
-            "top_zones": top_zones,
-            "group_size_distribution": top_group_sizes,
-            "month_distribution": top_months,
-        }
-
-    finally:
-        conn.close()
-
-@app.post("/debug/log_test")
-def debug_log_test():
-    """
-    Test endpoint: tries to write a single row into query_events.
-    This lets us see if log_query_event works in isolation.
-    """
-    sample_inputs = {"test": True, "source": "debug_log_test"}
-    sample_results = {"message": "This is a test row"}
-
-    try:
-        log_query_event(
-            inputs=sample_inputs,
-            results=sample_results,
-            status="success",
-            event_type="test_debug",
-            session_id=None,
-            user_id=None,
-            sim_version="v1.0.0",
-            query_index_in_session=None,
-            device_type=None,
-            browser=None,
-            os_name=None,
-            country=None,
-            region=None,
-            referrer=None,
-            latency_ms=None,
-        )
-        return {"ok": True, "message": "Row inserted into query_events"}
-    except Exception as e:
-        # Here we *don't* swallow the error; we return it so we can see what's wrong.
-        return {"ok": False, "error": str(e)}
-
-
-
-
-
-
-
-
+        return analytics.summary()
+    except sqlite3.Error as e:
+        raise HTTPException(status_code=500, detail=f"analytics database error: {e}")

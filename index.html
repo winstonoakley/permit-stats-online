@@ -922,44 +922,101 @@
       return { P1: P1Hat, P2: P2Hat, P3: P3Hat, total, byChoice: [P1Hat, P2Hat, P3Hat] };
     }
 
-    // --- Helpers for session & device metadata ---
+    // -------------------------
+    // Analytics identity
+    // -------------------------
+    // Two random ids live in localStorage: a visitor id (rotated after ~13
+    // months) and a visit id that starts over after 30 minutes without an
+    // event. seq_in_visit counts events within the visit. Nothing else about
+    // the browser is stored client-side; device and browser are parsed
+    // server-side from the User-Agent header.
 
-    function getSessionId() {
-      let id = localStorage.getItem('sessionId');
-      if (!id) {
-        if (window.crypto && window.crypto.randomUUID) {
-          id = crypto.randomUUID();
-        } else {
-          id = 'sess-' + String(Math.random()).slice(2);
-        }
-        localStorage.setItem('sessionId', id);
+    const VISIT_GAP_MS = 30 * 60 * 1000;
+    const VISITOR_MAX_AGE_MS = 13 * 30 * 24 * 60 * 60 * 1000;
+    const memStore = {}; // fallback when localStorage is unavailable (private mode etc.)
+
+    function storeGet(key) {
+      try { return localStorage.getItem(key); } catch (e) { return memStore[key] || null; }
+    }
+    function storeSet(key, value) {
+      try { localStorage.setItem(key, value); } catch (e) { memStore[key] = value; }
+    }
+    function storeDel(key) {
+      try { localStorage.removeItem(key); } catch (e) { delete memStore[key]; }
+    }
+    function randomId() {
+      if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+      return 'id-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+    }
+    function readJson(key) {
+      try { return JSON.parse(storeGet(key) || 'null'); } catch (e) { return null; }
+    }
+
+    // Returns {visitor_id, visit_id, seq_in_visit, is_new_visitor} and
+    // advances the visit; call once per event.
+    function analyticsIds() {
+      const now = Date.now();
+      let visitor = readJson('psVisitor');
+      let isNew = false;
+      if (!visitor || !visitor.id || (now - (visitor.created || 0)) > VISITOR_MAX_AGE_MS) {
+        visitor = { id: randomId(), created: now };
+        storeSet('psVisitor', JSON.stringify(visitor));
+        isNew = true;
       }
-      return id;
+      let visit = readJson('psVisit');
+      if (!visit || !visit.id || (now - (visit.last || 0)) > VISIT_GAP_MS) {
+        visit = { id: randomId(), last: now, seq: 0 };
+      }
+      visit.seq = (visit.seq || 0) + 1;
+      visit.last = now;
+      storeSet('psVisit', JSON.stringify(visit));
+      return { visitor_id: visitor.id, visit_id: visit.id, seq_in_visit: visit.seq, is_new_visitor: isNew };
     }
 
-    function getNextQueryIndex() {
-      const current = Number(localStorage.getItem('queryIndex') || '0');
-      const next = current + 1;
-      localStorage.setItem('queryIndex', String(next));
-      return next;
+    // Retire the v1 keys (a lifetime session id and a lifetime query counter).
+    storeDel('sessionId');
+    storeDel('queryIndex');
+
+    // Fire-and-forget delivery to /log_event; must never throw or block.
+    function sendAnalytics(body) {
+      try {
+        const json = JSON.stringify(body);
+        if (navigator.sendBeacon) {
+          navigator.sendBeacon(API_BASE_URL + '/log_event', new Blob([json], { type: 'text/plain' }));
+        } else {
+          fetch(API_BASE_URL + '/log_event', {
+            method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: json, keepalive: true
+          }).catch(() => {});
+        }
+      } catch (e) { /* analytics must never break the page */ }
     }
 
-    function getDeviceType() {
-      const ua = navigator.userAgent || '';
-      if (/Mobi|Android/i.test(ua)) return 'mobile';
-      if (/Tablet|iPad/i.test(ua)) return 'tablet';
-      return 'desktop';
+    function reportError(endpoint, httpStatus, message) {
+      sendAnalytics(Object.assign({
+        event_type: 'error',
+        detail: { endpoint: endpoint, http_status: httpStatus, message: message }
+      }, analyticsIds()));
     }
 
-    function getOsName() {
-      const ua = navigator.userAgent || '';
-      if (ua.includes('Windows')) return 'Windows';
-      if (ua.includes('Mac OS') || ua.includes('Macintosh')) return 'macOS';
-      if (ua.includes('Linux')) return 'Linux';
-      if (ua.includes('Android')) return 'Android';
-      if (/iPhone|iPad|iPod/.test(ua)) return 'iOS';
-      return 'Unknown';
-    }
+    // One page_view per load, with the external referrer (query string
+    // dropped), any UTM tags, and the viewport width.
+    (function logPageView() {
+      let referrer = null;
+      try { referrer = document.referrer ? document.referrer.split(/[?#]/)[0] : null; } catch (e) {}
+      let params;
+      try { params = new URLSearchParams(window.location.search); } catch (e) { params = new URLSearchParams(); }
+      sendAnalytics(Object.assign({
+        event_type: 'page_view',
+        page: {
+          path: window.location.pathname,
+          referrer: referrer,
+          utm_source: params.get('utm_source'),
+          utm_medium: params.get('utm_medium'),
+          utm_campaign: params.get('utm_campaign'),
+          viewport_w: window.innerWidth || null
+        }
+      }, analyticsIds()));
+    })();
 
     // Convert "YYYY-MM-DD" (from the form) to "Mmm dd"
     function formatIsoDateToMmmDd(isoDate) {
@@ -1106,28 +1163,23 @@
         };
       });
 
-      // --- collect session & device metadata for analytics ---
-      const sessionId = getSessionId();
-      const queryIndex = getNextQueryIndex();
-      const deviceType = getDeviceType();
-      const browserUa = navigator.userAgent || '';
-      const osName = getOsName();
+      // --- analytics identity for this query (see analyticsIds) ---
+      const ids = analyticsIds();
 
       const payload = {
         permit_year: permitYear,
         data_years: dataYears,
         choices: apiChoices,
 
-        // These fields line up with OddsRequest in main.py
-        session_id: sessionId,
-        query_index: queryIndex,
-        device_type: deviceType,
-        browser: browserUa,
-        os_name: osName
-        // latency_ms: can be added later if we want
+        // Optional metadata; lines up with OddsRequest in main.py. Device and
+        // browser are parsed server-side from the User-Agent header.
+        visitor_id: ids.visitor_id,
+        visit_id: ids.visit_id,
+        seq_in_visit: ids.seq_in_visit,
+        is_new_visitor: ids.is_new_visitor
       };
 
-      console.log('Payload to /estimate_odds:', payload);
+      const t0 = performance.now();
 
       submitButton.disabled = true;
       submitButton.textContent = 'Loading...';
@@ -1142,13 +1194,25 @@
         });
 
         if (!response.ok) {
+          reportError('/estimate_odds', response.status, 'http_error');
           errorDiv.textContent = 'Error from server: ' + response.status + ' ' + response.statusText;
           predictionContainer.innerHTML = '';
-        historyContainer.innerHTML = '';
+          historyContainer.innerHTML = '';
           return;
         }
 
         const data = await response.json();
+
+        // Report how long the query took from this side; the server fills
+        // client_ms on the row it created for this query.
+        if (data.event_id != null) {
+          sendAnalytics({
+            event_type: 'timing',
+            event_id: data.event_id,
+            visitor_id: ids.visitor_id,
+            client_ms: Math.round(performance.now() - t0)
+          });
+        }
 
         const years = data.years || [];
         const resultChoices = data.choices || [];
@@ -1330,6 +1394,7 @@
 
       } catch (err) {
         console.error(err);
+        reportError('/estimate_odds', null, 'fetch_failed');
         errorDiv.textContent = 'Something went wrong while contacting the server.';
         predictionContainer.innerHTML = '';
         historyContainer.innerHTML = '';
@@ -1565,14 +1630,18 @@
           const response = await fetch(API_BASE_URL + '/heatmap_odds', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
+            body: JSON.stringify(Object.assign({
               zone: zone,
               group_size: groupSize,
               permit_year: PERMIT_YEAR,
-              data_years: [2022, 2023, 2024, 2025, 2026]
-            })
+              data_years: [2022, 2023, 2024, 2025, 2026],
+              // analytics: which calendar was opened and on which month
+              from_choice: choiceNum,
+              month: hmMonth + 1
+            }, analyticsIds()))
           });
           if (!response.ok) {
+            reportError('/heatmap_odds', response.status, 'http_error');
             if (requestId === hmRequestId) {
               hmStatus.textContent = 'Error from server: ' + response.status;
             }
@@ -1584,6 +1653,7 @@
           heatmapCache[cacheKey] = data.predicted_by_date || {};
         } catch (err) {
           console.error(err);
+          reportError('/heatmap_odds', null, 'fetch_failed');
           if (requestId === hmRequestId) {
             hmStatus.textContent = 'Something went wrong while loading odds.';
           }

@@ -2,11 +2,13 @@
 
 Audit of the visitor-logging path (`log_query_event()` in `app/main.py`,
 `query_events` in `odds_database/analytics.db`, the metadata `index.html`
-sends, and the three analytics endpoints). Written 2026-09-07 against the
-`worktree-data-collection` branch at `f08773f`. No code was changed.
+sends, and the three analytics endpoints). Written 2026-09-07 against
+`worktree-data-collection`, which was then rebased onto `heatmap-calendar`
+at `343c36d`; the text describes the code as of that commit. No code was
+changed.
 
-Where the branch being audited differs from `heatmap-calendar` (`343c36d`)
-or from what GitHub says is deployed, the difference is called out.
+Where the code differs from what GitHub says is deployed (`b453c00`), the
+difference is called out.
 
 ## Summary
 
@@ -31,6 +33,11 @@ or from what GitHub says is deployed, the difference is called out.
   authentication: `/debug/analytics` dumps the whole table,
   `/analytics/summary` reads it all into memory per request, and
   `/debug/log_test` inserts rows.
+
+Sections 1 to 6 describe the state found by the audit. Section 7 describes
+collection v2, implemented the same day, which replaces the event model and
+addresses every item above except the Railway volume, which has to be
+attached in the dashboard.
 
 ## 1. Code path
 
@@ -84,7 +91,7 @@ All of this is in the `Fetch Results` submit handler in `index.html`
 4. Copies `session_id`, `query_index`, `device_type`, `browser`, `os_name`,
    `latency_ms` straight from the payload (no validation beyond Pydantic's
    `str | None` / `int | None`), sets `sim_version` to a hard-coded string
-   (`"v1.0.0"` on this branch; `"v1.1.1"` on `heatmap-calendar`), and reads
+   (`"v1.1.1"` now; `"v1.0.0"` in the deployed `b453c00`), and reads
    `referrer` from the HTTP `Referer` header.
 5. Calls `log_query_event()` inside `try/except Exception`, printing
    `"Analytics logging failed: ..."` to stdout on failure.
@@ -94,8 +101,8 @@ All of this is in the `Fetch Results` submit handler in `index.html`
 inserts one row with `event_type = 'get_table'`, `status = 'success'`,
 `user_id = country = region = NULL`, `inputs_json` = the inputs dict, and
 `results_json` = **the entire engine result** (every choice's
-`odds_by_year`, comparable dates, and on `heatmap-calendar` also
-`predicted` and `obs_by_year`). Rows are about 2.3 KB each locally.
+`odds_by_year`, `obs_by_year`, `predicted`, and comparable dates). Rows
+are about 2.3 KB each locally.
 
 `init_logging_db()` runs at import: `mkdir odds_database`, then
 `executescript(schema.sql)`. The path is `BASE_DIR / "odds_database" /
@@ -104,16 +111,18 @@ the odds databases, and nothing redirects the analytics file. One
 consequence locally: every git worktree has its own `analytics.db`, and
 the development data is split across four of them.
 
-On `heatmap-calendar` only: `OddsRequest` gains `log_event: bool = True`,
-and the heatmap's priority-conditioning lookups call `/estimate_odds` with
-`log_event: false` so they are not logged. The flag is client-controlled.
+`OddsRequest` also carries `log_event: bool = True`. The heatmap's
+priority-conditioning lookups call `/estimate_odds` with `log_event:
+false` so they are not logged as user queries. The flag is
+client-controlled, so any caller can opt out of being logged. (Neither
+the flag nor the heatmap exists in the deployed `b453c00`.)
 
 ### 1.3 What is never logged
 
 | Event | Why not |
 |---|---|
 | Page loads | `GET /` is a plain `FileResponse`; nothing records it. Visitors who never click Fetch Results are invisible. |
-| `/heatmap_odds` | No logging call in the handler. The heatmap's conditioning calls to `/estimate_odds` are explicitly excluded on `heatmap-calendar`. |
+| `/heatmap_odds` | No logging call in the handler. The heatmap's conditioning calls to `/estimate_odds` are explicitly excluded via `log_event: false`. |
 | Errors | Engine exceptions raise before the log call (500, no row). Pydantic validation failures (422) never enter the handler. Client-side fetch failures and non-OK responses are shown in the page and not reported. `status` is therefore always `'success'`. |
 | Timing | `latency_ms` is never sent by the page and never measured on the server. |
 | Where the visitor came from | No IP address is stored, `country`/`region` are never derived. The `Referer` header of a same-origin `fetch` is the page's own URL, so `referrer` is `http://127.0.0.1:8000/` on 100% of local rows and would be the site's own URL in production. `document.referrer` (the external referrer) is never captured. No UTM handling. |
@@ -295,6 +304,9 @@ in (all read-only):
 
 ## 5. Risk: unauthenticated analytics endpoints
 
+(As found. Under v2, section 7, the read endpoints require a bearer token,
+`/debug/log_test` is gone, and the client-supplied fields are capped.)
+
 None of these check any credential, and only `/estimate_odds` and
 `/heatmap_odds` are rate-limited.
 
@@ -303,7 +315,7 @@ None of these check any credential, and only `/estimate_odds` and
 | `/debug/analytics?limit=N` | GET | Returns the newest `N` rows with every column except `user_id`, `country`, `region`. No cap on `limit`, no rate limit. | Anyone can dump the whole table: every visitor's lifetime id, full user-agent string, referrer, every query and every result. Not names or IPs, but `session_id` + UA + timestamps is a persistent browser fingerprint, and `results_json` is the product's output in bulk. |
 | `/analytics/summary` | GET | Loads **every** `inputs_json` into memory and parses it on each call. No rate limit. | Discloses usage volume and popular zones/dates. Cost is linear in table size per request, so it is the cheapest way to load the server once the table is large. |
 | `/debug/log_test` | POST | Inserts one `test_debug` row. No rate limit. | Anyone can write unlimited rows: pollutes the data and fills the disk (or the volume). |
-| `/estimate_odds` | POST | Logs client-supplied `session_id`, `device_type`, `browser`, `os_name`, `query_index` (and `log_event` on `heatmap-calendar`) verbatim. No length limits, no maximum on the `choices` list (an 8-choice request is in the local data). | Anyone can write arbitrary strings into the analytics table and opt out of being logged. The 30/minute limit is per client address; if Railway's proxy address is what `get_remote_address` sees, that is one shared bucket for everyone (verify `X-Forwarded-For` handling). |
+| `/estimate_odds` | POST | Logs client-supplied `session_id`, `device_type`, `browser`, `os_name`, `query_index` verbatim, and honours a client-supplied `log_event: false`. No length limits, no maximum on the `choices` list (an 8-choice request is in the local data). | Anyone can write arbitrary strings into the analytics table and opt out of being logged. The 30/minute limit is per client address; if Railway's proxy address is what `get_remote_address` sees, that is one shared bucket for everyone (verify `X-Forwarded-For` handling). |
 | CORS | | `ALLOWED_ORIGIN` defaults to `*` together with `allow_credentials=True`. | Harmless today (no cookies or auth), but it should be set in production. |
 
 `/stats` reads a `stats.db` that does not exist and always answers "No
@@ -323,3 +335,183 @@ be answered because there is no production data at all.
 | Where visitors come from | **No** | No IP, `country`/`region` never set, `referrer` is the same-origin page URL on every row, `document.referrer` and UTM parameters are never captured. |
 | How the heatmap is used | **No** | `/heatmap_odds` is not logged, the heatmap's conditioning calls are explicitly excluded, and there are no UI events. (The heatmap is also not in production yet.) |
 | Whether the tool is slow | **No** | `latency_ms` is never sent and no server-side timing is recorded. |
+
+## 7. Collection v2 (implemented 2026-09-07)
+
+Option A from the recommendation: keep SQLite, fix the event model, log
+page views first-party, protect the read endpoints, and persist the file on
+a Railway volume. No third-party analytics.
+
+### 7.1 What changed
+
+- **`app/analytics.py`** (new) owns everything that touches the analytics
+  database: the path (`ANALYTICS_DB_PATH`, default
+  `odds_database/analytics.db`), schema application and versioned
+  migrations (`PRAGMA user_version`), `log_event()` and `set_client_ms()`
+  (best-effort, never raise), user-agent parsing, geography from proxy
+  headers, and the readers used by the export and summary endpoints.
+  `app/main.py` no longer opens the database itself.
+- **`schema.sql`** is now the single v2 definition: `events` (one row per
+  event of any type) and `query_choices` (one row per submitted choice of
+  a `get_table` event). Every statement is idempotent and is re-applied on
+  every start.
+- **Migration.** On start, a file with the old `query_events` table and no
+  `user_version` is treated as v1: its rows are copied into `events` and
+  `query_choices` (see 7.5) and the table is renamed `query_events_v1`, so
+  nothing is dropped. The whole migration is one transaction.
+- **`app/main.py`.** `get_table` is logged from `/estimate_odds` with the
+  engine time and per-choice `predicted`/`conditioned` probabilities;
+  `heatmap_view` from `/heatmap_odds`; `error` from the 422, 429 and 500
+  handlers. New `POST /log_event` accepts page-originated `page_view`,
+  `error`, `ad_view`, and a `timing` follow-up. `/analytics/export`
+  streams JSON Lines. `/debug/analytics` and `/analytics/summary` require
+  `Authorization: Bearer $ANALYTICS_TOKEN` and answer 503 when the token
+  is not configured. `/debug/log_test` is removed. `/estimate_odds` and
+  `/heatmap_odds` keep their request and response shapes; the request
+  models gain optional `visitor_id`, `visit_id`, `seq_in_visit`,
+  `is_new_visitor` (and `from_choice`, `month` for the heatmap), the odds
+  response gains an optional `event_id`, and the v1 fields (`session_id`,
+  `query_index`, `browser`, ...) are still accepted so a cached old page
+  keeps working.
+- **`index.html`.** A visitor id (rotated after ~13 months) and a visit id
+  (new after 30 minutes without an event) replace the lifetime session id
+  and lifetime query counter; the old `localStorage` keys are deleted on
+  load. The page sends a `page_view` beacon on load, a `timing` beacon
+  with the measured round trip after each query, and an `error` beacon
+  when a fetch fails. It no longer sends device, OS or user-agent fields,
+  and no longer logs the payload to the console.
+- **Tests** in `tests/` (`python -m pytest tests -q` with
+  `requirements-dev.txt`): fresh schema, migration of a synthetic v1 file
+  and of a copy of a real one (`LEGACY_ANALYTICS_DB`, default
+  `odds_database/analytics.db`, skipped if absent), every event type,
+  v1 payload compatibility, the token guard on all three read endpoints,
+  the export filter, and that a failing analytics write leaves
+  `/estimate_odds`, `/heatmap_odds` and `/log_event` working.
+- **`.gitignore`** (new) excludes `odds_database/`, so a local analytics
+  file can no longer be committed by accident.
+
+### 7.2 Event model
+
+| Event | Logged by | What it carries beyond the common columns |
+|---|---|---|
+| `page_view` | page, on load, via `sendBeacon` | `page_path`, `page_referrer` (origin + path, query string dropped), `utm_source/medium/campaign`, `viewport_w` |
+| `get_table` | server, in `/estimate_odds` | `sim_version`, `server_ms`, `client_ms` (filled by the timing beacon), `detail`: permit_year, data_years, n_choices, total_predicted; plus `query_choices` rows: rank, zone, permit_date, month, day, group_size, predicted, conditioned |
+| `heatmap_view` | server, in `/heatmap_odds` | `sim_version`, `server_ms`, `detail`: zone, group_size, permit_year, month, from_choice. Re-opening a calendar the page has cached is not logged. |
+| `error` | server handlers (422/429/500) and page beacons | `status = 'error'`, `detail`: endpoint, method, http_status, message (an exception class name, never the body or the message text). Capped at 120 rows per minute. |
+| `ad_view` | reserved for the ads workflow | accepted by `/log_event` with a free-form `detail` up to 2 KB |
+
+Common columns on every row: `schema_version` (2; 1 for imported rows),
+`event_time_utc` (server clock), `source` (`page`, `api` for calls without
+a visitor id, `test`), `visitor_id`, `visit_id`, `seq_in_visit`,
+`is_new_visitor`, `country`, `region`, `geo_source`, `device_type`,
+`os_family`, `browser_family`, `browser_major`, `is_bot`, `app_version`
+(git commit, from `RAILWAY_GIT_COMMIT_SHA`). Full DDL in `schema.sql`.
+
+### 7.3 Identity and privacy
+
+- Two random ids in `localStorage`, generated by the page: `psVisitor`
+  (id + creation time; replaced after 13 months) and `psVisit` (id, last
+  event time, event counter; replaced after 30 minutes of inactivity).
+  Nothing else identifies the browser. If `localStorage` is unavailable
+  the ids live in memory for the page load.
+- **No IP address is ever stored.** Country and region are read from a
+  proxy geolocation header (`CF-IPCountry` / `CF-Region-Code` when
+  Cloudflare is in front; also the Vercel and CloudFront names;
+  `GEO_COUNTRY_HEADER` / `GEO_REGION_HEADER` add a custom one). Railway's
+  own proxy sets no such header, so without Cloudflare these columns stay
+  NULL. `X-Forwarded-For` is never read.
+- **No raw user-agent string is stored.** It is reduced on the server to
+  device type (mobile / tablet / desktop / bot / other), OS family,
+  browser family and major version, and a bot flag. The v1 iOS/Android
+  bug is gone (iPhones are `iOS`, Android phones `Android`).
+- The engine result is no longer stored; the per-choice `predicted` and
+  `conditioned` numbers plus `sim_version` are enough to reconstruct what
+  the visitor was shown.
+- The timing beacon can only update a row that carries the same
+  `visitor_id`, and only while `client_ms` is empty.
+
+### 7.4 Deploying on Railway
+
+1. Add a volume to the service and mount it at `/data`.
+2. Set `ANALYTICS_DB_PATH=/data/analytics.db` and
+   `ANALYTICS_TOKEN=<long random string>` (for example
+   `python -c "import secrets; print(secrets.token_urlsafe(32))"`).
+   Also set `ALLOWED_ORIGIN` to the site's origin.
+3. Deploy. The first start creates the v2 database on the volume (or
+   migrates a v1 file if one was copied there first, see 7.5).
+4. To get country/region, put Cloudflare in front of the domain; nothing
+   else is needed.
+5. Pull data with the token, for example
+   `curl -H "Authorization: Bearer $ANALYTICS_TOKEN" "https://<domain>/analytics/export?since=2027-02-01" > events.jsonl`.
+   Do this daily during the lottery window and monthly otherwise; the
+   exported files are the backup. `/analytics/summary` gives a quick
+   sanity check.
+
+### 7.5 What happened to the existing rows
+
+Migration is automatic and keeps everything. Each `query_events` row
+becomes one `events` row with `schema_version = 1`, `event_type` as it
+was (`get_table`, or `test_debug` for `/debug/log_test` rows, with
+`source = 'test'`), `visitor_id = session_id` (NULL for `"anonymous"`,
+which becomes `source = 'api'`), visits reconstructed per visitor with the
+30-minute gap so `visit_id` and `seq_in_visit` are filled, device fields
+parsed from the stored user-agent string (which is then not carried
+over), `sim_version` and `latency_ms` copied, and `detail` holding
+permit_year, data_years, n_choices, the original row id (`legacy_id`) and
+the lifetime `query_index`. Each choice in `inputs_json` becomes a
+`query_choices` row; `predicted` is taken from `results_json` where the
+old code recorded it (`v1.1.x` rows), `conditioned` is NULL. `country`,
+`referrer` and `client_ms` are NULL because v1 never had them. The
+original table survives as `query_events_v1`.
+
+The four local files (121 rows, all development traffic) are still
+development traffic after migration; the `schema_version = 1` marker and
+the `source` column make them easy to exclude. Nothing needs to be done
+with them. If a production v1 file ever turns up, copy it to the volume
+path before the first start and it will be migrated in place.
+
+### 7.6 Privacy policy text
+
+No privacy page is committed yet. The ads worktree has a draft at
+`content/privacy.md` whose "A random session identifier", "Each
+calculation you run", and "Cookies and similar technologies" paragraphs
+describe v1. Replace them with this:
+
+> **Usage data the site records.** When the page loads, when you press
+> "Fetch Results", and when you open the odds calendar, the site records:
+> the time; the zones, dates and group sizes you entered and the estimates
+> it returned; which calendar you opened; your country and, where
+> available, state or region, as reported by the network provider (your IP
+> address itself is not recorded); the kind of device (phone, tablet or
+> desktop), operating system family and browser family, derived from your
+> browser's user-agent string, which itself is not stored; the address of
+> the page that linked you here, without any query parameters; how long
+> each estimate took; and whether a request failed.
+>
+> To tell visits apart, the site stores two random identifiers in your
+> browser's local storage: a visitor identifier, replaced after about 13
+> months, and a visit identifier that starts over after 30 minutes without
+> activity. Neither is linked to your name, email address, IP address or
+> any account. Clearing this site's data in your browser removes both.
+>
+> This data is kept on the site's own server, is not sent to or shared
+> with any third party, and is used to see how the tool is used and to
+> improve the estimates. The site sets no cookies of its own.
+
+The "Server logs" paragraph (the host keeps short-term logs with IP
+addresses) and the "The site does not use third-party analytics" sentence
+in the draft remain true.
+
+### 7.7 Questions, revisited
+
+Once production data is retained on the volume:
+
+| Question | Now | How |
+|---|---|---|
+| How many people use the tool each season | **Yes** (as browsers) | distinct `visitor_id` with `source = 'page'` and `is_bot = 0`; `page_view` counts visitors who never queried; `is_new_visitor` splits new from returning |
+| Which zones, dates and group sizes | **Yes** | `query_choices` |
+| Whether people iterate | **Yes** | `get_table` rows per `visit_id`; `seq_in_visit` orders them and `query_choices` shows what changed |
+| Mobile vs desktop | **Yes** | `device_type`, `os_family`, `viewport_w` |
+| Where visitors come from | **Partially** | `page_referrer` and UTM tags always; `country`/`region` only with Cloudflare (or another geo header) in front |
+| How the heatmap is used | **Yes** | `heatmap_view` rows: zone, group size, month, which choice; cached re-opens are not counted |
+| Whether the tool is slow | **Yes** | `server_ms` (engine) and `client_ms` (page round trip) on every `get_table`; `server_ms` on `heatmap_view` |

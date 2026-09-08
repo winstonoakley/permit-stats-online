@@ -1,0 +1,11 @@
+# Local analytics database (production lives on the Railway volume)
+odds_database/
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.pytest_cache/
+
+# Backtest output files
+backtest_*.txt
