@@ -1,0 +1,4 @@
+# Analysis pipeline only (python -m analysis). Not needed by the web app.
+pandas>=2.1
+matplotlib>=3.7
+tzdata

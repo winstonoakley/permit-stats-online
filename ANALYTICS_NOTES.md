@@ -515,3 +515,57 @@ Once production data is retained on the volume:
 | Where visitors come from | **Partially** | `page_referrer` and UTM tags always; `country`/`region` only with Cloudflare (or another geo header) in front |
 | How the heatmap is used | **Yes** | `heatmap_view` rows: zone, group size, month, which choice; cached re-opens are not counted |
 | Whether the tool is slow | **Yes** | `server_ms` (engine) and `client_ms` (page round trip) on every `get_table`; `server_ms` on `heatmap_view` |
+
+## 8. Analysis pipeline (`analysis/`)
+
+The questions above are answered by a separate package that never runs in
+the web app. Install its dependencies with
+`pip install -r requirements-analysis.txt` (pandas, matplotlib, tzdata;
+kept out of `requirements.txt` on purpose) and run:
+
+```
+python -m analysis report --since 2026-01-01 [--until 2026-04-01] [--source prod|local]
+python -m analysis pull   --since 2026-01-01                       # fetch only
+```
+
+`--source prod` (default) pulls `GET /analytics/export` from `ANALYTICS_URL`
+(or `--url`) with `ANALYTICS_TOKEN`; `--source local` reads a SQLite file
+(`--db`, default `odds_database/analytics.db`).
+
+Stages, one module each:
+
+1. **`pull.py`** writes the export as JSON Lines to
+   `data/raw/<pull date>/events_<source>_<since>_<until>.jsonl` plus a
+   `.meta.json` sidecar (origin, range, pulled_at, row count). A report run
+   on the same day reuses the file; `--refresh` re-pulls; `--no-pull` uses
+   the newest cached file for the range. Pagination restarts at the last
+   timestamp and de-duplicates by id.
+2. **`transform.py`** builds `events`, `visits` (start, end, duration,
+   event/query/heatmap/ad counts, device, country, referrer, lottery-window
+   flag), `visitors`, and `choices` (one row per zone/date/group-size choice
+   of each query). It removes API-source rows, test rows, bots and legacy
+   v1 rows, counting each, and records null rates for the columns the
+   metrics depend on. Days are counted in `America/Los_Angeles` (`--tz`).
+3. **`checks.py`** fails the run (exit code 2, no report) on: a schema
+   version newer than the package knows, unparseable timestamps, duplicate
+   ids, rows out of time order, rows outside the requested range, or a
+   complete lottery-window day (Feb 15 to Mar 1) with zero page events.
+   Legacy rows, over-long visits, `seq_in_visit` gaps, missing geography
+   and missing device type are warnings. `--allow-failed-checks` renders
+   anyway with a red banner.
+4. **`metrics.py`** has one function per question: visits and visitors per
+   day / week / season, lottery-window share, queries per visit, demand by
+   zone, entry date (a zone-by-date matrix over the permit season, mirroring
+   the heatmap), group size and month, device split, referrers and
+   countries, latency p50/p95, heatmap usage (including how many queries
+   followed a calendar view), and ad exposure per visit, which reports
+   "not available" until `ad_view` events exist.
+5. **`report.py`** writes `reports/<date>_report_since_<since>.html`:
+   data-quality summary first (rows pulled, rows removed by reason, check
+   results, null rates), then a narrative, chart and table per question.
+   The file is self-contained (charts are embedded PNGs).
+
+`data/` and `reports/` are git-ignored. `tests/test_analysis.py` runs the
+whole pipeline against a synthetic fixture database with known answers
+(29 rows, 18 visits, 3 visitors, 3 queries) and exercises every failing
+check; nothing in the tests touches production.

@@ -9,3 +9,7 @@ venv/
 
 # Backtest output files
 backtest_*.txt
+
+# Analysis pipeline: raw pulls and rendered reports
+data/
+reports/
