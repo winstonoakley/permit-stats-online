@@ -43,7 +43,16 @@ VISIT_COLUMNS = ["visit_id", "visitor_id", "start", "end", "start_local", "durat
 VISITOR_COLUMNS = ["visitor_id", "first_seen", "last_seen", "n_visits", "n_visits_in_window",
                    "n_queries", "device_type", "country"]
 
-REMOVAL_REASONS = ("legacy_schema", "test_source", "api_source", "bot")
+REMOVAL_REASONS = ("legacy_schema", "test_source", "api_source", "bot", "bot_burst", "rate_limited")
+
+# Behavioural bot rule: a visit (or, without a visit id, a visitor) that
+# makes this many query/heatmap requests inside any BURST_WINDOW is a script,
+# whatever its user agent claims. A person using the page needs a heatmap
+# click, a tile click and "Fetch Results" per query, so even fast iteration
+# stays at a few per minute.
+BURST_EVENTS = 10
+BURST_WINDOW = pd.Timedelta(seconds=60)
+BURST_TYPES = ("get_table", "heatmap_view")
 
 
 @dataclass
@@ -95,6 +104,28 @@ def events_frame(rows: Iterable[dict], tz: str = DEFAULT_TZ) -> pd.DataFrame:
     return df
 
 
+def burst_keys(df: pd.DataFrame) -> set:
+    """Visit ids (or visitor ids, for rows without a visit) with at least
+    BURST_EVENTS query/heatmap requests inside any BURST_WINDOW."""
+    req = df[df["event_type"].isin(BURST_TYPES) & df["ts"].notna()]
+    key = req["visit_id"].fillna(req["visitor_id"])
+    req = req.assign(_key=key)[key.notna()]
+    flagged = set()
+    for k, g in req.groupby("_key"):
+        if len(g) < BURST_EVENTS:
+            continue
+        ts = g["ts"].sort_values().reset_index(drop=True)
+        # the (BURST_EVENTS - 1)-th following event lands inside the window
+        span = ts.shift(-(BURST_EVENTS - 1)) - ts
+        if (span <= BURST_WINDOW).any():
+            flagged.add(k)
+    return flagged
+
+
+def _is_server_rate_limit(detail) -> bool:
+    return isinstance(detail, dict) and detail.get("message") == "rate_limited" and detail.get("http_status") == 429
+
+
 def filter_traffic(df: pd.DataFrame):
     """Keep page traffic from real browsers on the current schema. Returns
     (kept, removed_counts) and adds `removed_reason` to `df` in place."""
@@ -104,6 +135,16 @@ def filter_traffic(df: pd.DataFrame):
     reason[reason.isna() & (df["source"] == "test")] = "test_source"
     reason[reason.isna() & (df["source"] == "api")] = "api_source"
     reason[reason.isna() & (df["is_bot"] == 1)] = "bot"
+    # Scripts that spoof a browser user agent: flag the whole visit by rate.
+    bursts = burst_keys(df[reason.isna()])
+    if bursts:
+        key = df["visit_id"].fillna(df["visitor_id"])
+        reason[reason.isna() & key.isin(bursts)] = "bot_burst"
+    # The server's own 429 rows carry no visitor (the body is never read), so
+    # they cannot be tied to a visit. A visitor who is throttled through the
+    # page still shows up: the page sends its own `error` event for it.
+    server_429 = (df["event_type"] == "error") & df["visitor_id"].isna() & df["detail"].apply(_is_server_rate_limit)
+    reason[reason.isna() & server_429] = "rate_limited"
     df["removed_reason"] = reason
     kept = df[reason.isna()].drop(columns=["removed_reason"]).copy()
     removed = {r: int((reason == r).sum()) for r in REMOVAL_REASONS}

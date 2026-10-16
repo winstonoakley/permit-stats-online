@@ -63,6 +63,12 @@ REGION_HEADERS = ("cf-region-code", "x-vercel-ip-country-region", "cloudfront-vi
 # Connection and schema
 # ---------------------------------------------------------------------------
 
+def enabled() -> bool:
+    """ANALYTICS_ENABLED=0/false/off turns every write into a no-op and stops
+    init_db() from touching the disk. Read on every call, like db_path()."""
+    return os.getenv("ANALYTICS_ENABLED", "1").strip().lower() not in ("0", "false", "no", "off")
+
+
 def db_path() -> Path:
     """Where the database lives; read from the environment on every call so
     tests and deployments can point it elsewhere without an import cycle."""
@@ -373,6 +379,8 @@ def log_event(
     context: output of context_from_headers()
     choices: dicts with zone, month, day, group_size, predicted, conditioned
     """
+    if not enabled():
+        return None
     try:
         if event_type == "error" and not _error_budget_ok():
             return None
@@ -432,6 +440,8 @@ def set_client_ms(event_id: int, visitor_id: str, client_ms: int,
                   path: Optional[os.PathLike | str] = None) -> bool:
     """Fill in the page-measured latency for an event this visitor owns.
     Best-effort; returns True if a row was updated."""
+    if not enabled():
+        return False
     try:
         if not visitor_id or _int(event_id) is None or _int(client_ms) is None:
             return False

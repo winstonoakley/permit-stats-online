@@ -999,8 +999,15 @@
     }
 
     // One page_view per load, with the external referrer (query string
-    // dropped), any UTM tags, and the viewport width.
-    (function logPageView() {
+    // dropped), any UTM tags, and the viewport width. Sent after the load
+    // event, when the browser is idle, so the beacon never competes with the
+    // page itself for bandwidth (it was costing up to ~150 ms of mobile LCP).
+    function whenIdleAfterLoad(fn) {
+      const run = () => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 2000 }) : setTimeout(fn, 0));
+      if (document.readyState === 'complete') run();
+      else window.addEventListener('load', run, { once: true });
+    }
+    whenIdleAfterLoad(function logPageView() {
       let referrer = null;
       try { referrer = document.referrer ? document.referrer.split(/[?#]/)[0] : null; } catch (e) {}
       let params;
@@ -1016,7 +1023,7 @@
           viewport_w: window.innerWidth || null
         }
       }, analyticsIds()));
-    })();
+    });
 
     // Convert "YYYY-MM-DD" (from the form) to "Mmm dd"
     function formatIsoDateToMmmDd(isoDate) {

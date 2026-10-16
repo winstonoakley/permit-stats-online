@@ -432,6 +432,8 @@ a visitor id, `test`), `visitor_id`, `visit_id`, `seq_in_visit`,
 
 ### 7.4 Deploying on Railway
 
+The full checklist, including the redeploy test, is in `DEPLOY_ANALYTICS.md`.
+
 1. Add a volume to the service and mount it at `/data`.
 2. Set `ANALYTICS_DB_PATH=/data/analytics.db` and
    `ANALYTICS_TOKEN=<long random string>` (for example
@@ -569,3 +571,102 @@ Stages, one module each:
 whole pipeline against a synthetic fixture database with known answers
 (29 rows, 18 visits, 3 visitors, 3 queries) and exercises every failing
 check; nothing in the tests touches production.
+
+## 9. End-to-end verification (2026-10-16)
+
+The app ran locally (uvicorn, analytics on, `ANALYTICS_TOKEN` set) and a
+Playwright script drove the real page in Chromium, one browser context per
+visitor, each with its own user agent, `X-Forwarded-For` and
+`localStorage`. The page's own JavaScript made the ids and sent the
+beacons. Dates were picked by clicking heatmap tiles, the only way the page
+allows. The mix:
+
+| Visitor | Device | What it did | Visits | Queries |
+|---|---|---|---|---|
+| V1 | Windows Chrome, from Google | page load only | 1 | 0 |
+| V2 | macOS Firefox, `utm_source=reddit` | heatmap Core/2, one query | 1 | 1 |
+| V3 | iPhone Safari | heatmap Colchuck/4, then group size 4, 2, 1 | 1 | 3 |
+| V4 | Android Chrome | two-choice set (Core + Snow, Jul 20), then both group sizes 3 to 2 | 1 | 2 |
+| V5 | Windows Edge | one query, 31 minutes idle (visit clock aged), one more query | 2 | 1 + 1 |
+| V6 | macOS Safari | heatmap endpoint returns 503 (page error beacon), malformed odds request (server 422) | 1 | 0 |
+| bot | script with a desktop Chrome UA and page-shaped ids | 40 queries back to back (30 x 200, 10 x 429) | - | - |
+
+### 9.1 Results
+
+| Check | Result |
+|---|---|
+| Report totals: 7 visits, 6 visitors, 8 queries | **Pass** after fix A (it reported 8 / 7 / 38 before) |
+| Queries, heatmaps and page views per visit match, visit by visit | **Pass** |
+| Zone x date demand (5 cells) and zone x date x group size (9 cells) | **Pass** |
+| Idle visitor gets a second visit id, same visitor id | **Pass** |
+| Device split (5 desktop, 2 mobile visits) | **Pass** |
+| Bot burst flagged | **Pass** after fix A (`bot_burst` 30 rows, `rate_limited` 10 rows) |
+| Migration of a copy of `odds_database/analytics.db` (69 v1 rows) | **Pass**: 69/69 rows, every `event_time_utc` identical to the original by `legacy_id`, 192 choice rows, `query_events_v1` kept |
+| Legacy rows appear in the report with original timestamps | **Pass** after fix B (before, they only appeared as a count) |
+| `/estimate_odds` unchanged vs `heatmap-calendar` | **Pass**: 180 inputs (every zone x 7 dates x 4 group sizes, plus 40 random 2-3 choice sets, permit years 2025 and 2027), identical apart from the new `event_id`; `/heatmap_odds` 15/15 identical |
+| Tool works with analytics disabled | **Pass** after fix C (there was no switch) |
+| Tool works with an unwritable DB path | **Pass**: page, query, heatmap and beacons all fine, no slowdown; read endpoints now answer 503 instead of a 500 traceback (fix D) |
+| Protected endpoints reject requests without the token | **Pass**: no header, wrong token, missing `Bearer`, Basic auth all get 401 on `/analytics/export`, `/analytics/summary`, `/debug/analytics`; 503 when no token is configured; `/debug/log_test` is gone (404) |
+| Lighthouse CLS | **Pass**: 0 on base and branch, mobile and desktop |
+| Lighthouse LCP | **Pass** after fix E on mobile (1053 ms median on both, it was up to +176 ms); desktop simulated LCP is +37 ms (284 to 321 ms), score 100, observed LCP no worse (145 vs 163 ms median) |
+
+The comparison baseline is `heatmap-calendar` (the branch this one is
+built on), not `main`: `main` predates the calibration fix, so its odds
+differ on purpose.
+
+Expected warnings in the run: `seq_in_visit_gaps` (V6: the heatmap request
+that failed in front of the app took a sequence number but never reached
+the server, which is what the warning is for) and `geo_present` (no
+Cloudflare locally).
+
+### 9.2 Changes made to pass
+
+A. **Behavioural bot rule** (`analysis/transform.py`). Bot detection was
+user-agent only, so a script with a browser UA counted as a heavy user. A
+visit (or a visitor, when there is no visit id) with 10 or more
+`get_table`/`heatmap_view` requests inside any 60 seconds is now removed as
+`bot_burst`. The page needs a calendar click, a tile click and "Fetch
+Results" per query, so real iteration stays at a few per minute. The
+server's own 429 rows are removed as `rate_limited`: they carry no visitor,
+and a throttled person is still counted through the page's own error
+beacon.
+
+B. **Legacy rows in the report** (`analysis/report.py`). The data-quality
+section now lists imported v1 rows: count, first and last original
+timestamp, a per-day table and zones. They remain excluded from every
+metric.
+
+C. **`ANALYTICS_ENABLED`** (`app/analytics.py`, `app/main.py`). Set to `0`,
+`false`, `no` or `off` and the app never opens or creates the database,
+`log_event()` and `set_client_ms()` do nothing, and the read endpoints
+answer 503 after checking the token. Default is on.
+
+D. **Read endpoints when the database cannot be opened** (`app/main.py`).
+`/analytics/summary`, `/analytics/export` and `/debug/analytics` answer 503
+"analytics database unavailable" for any SQLite or OS error. The export
+opens the database before it starts streaming.
+
+E. **Page-view beacon after load** (`index.html`). It was sent while the
+inline script ran, competing with the page for bandwidth on a throttled
+mobile connection. It now waits for the load event and an idle moment
+(`requestIdleCallback`, 2 s timeout).
+
+Tests added: burst removed despite a browser UA, paced iteration not
+flagged, server 429 rows removed while page errors are kept, legacy rows
+in the report, analytics disabled, unwritable path. 43 passed, 1 skipped
+(the real-file migration test, which passes with
+`LEGACY_ANALYTICS_DB=<copy of odds_database/analytics.db>`).
+
+### 9.3 Found, not changed
+
+- **Rate limiting in production.** slowapi keys on `request.client.host`.
+  Uvicorn only trusts `X-Forwarded-For` from `127.0.0.1` by default, so
+  behind Railway's proxy every visitor may share one bucket: 30 queries,
+  15 heatmaps and 60 beacons per minute **for the whole site**. That is
+  enough to throttle real people in the lottery window. Check the Railway
+  start command and add `--forwarded-allow-ips='*'` (or the proxy's range)
+  before February. This was not changed here because it is deployment
+  configuration and predates this branch.
+- A server-side 500 on `/heatmap_odds` or `/estimate_odds` is recorded
+  twice: once by the server (no visitor) and once by the page's beacon.
+  The error count in the report includes both.

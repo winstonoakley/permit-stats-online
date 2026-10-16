@@ -48,10 +48,13 @@ APP_VERSION = (os.getenv("RAILWAY_GIT_COMMIT_SHA") or os.getenv("APP_VERSION") o
 
 # Create or migrate the analytics database once at startup. Failure must not
 # stop the site; events are simply not recorded until it is fixed.
-try:
-    analytics.init_db()
-except Exception as e:
-    print("Analytics init failed:", e, file=sys.stderr)
+if analytics.enabled():
+    try:
+        analytics.init_db()
+    except Exception as e:
+        print("Analytics init failed:", e, file=sys.stderr)
+else:
+    print("Analytics disabled (ANALYTICS_ENABLED); no events are recorded.", file=sys.stderr)
 
 
 # --- Analytics helpers -------------------------------------------------------
@@ -121,6 +124,14 @@ def require_analytics_token(request: Request) -> None:
             detail="Invalid or missing analytics token",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    # Only after the token checks out: say plainly when there is nothing to read.
+    if not analytics.enabled():
+        raise HTTPException(status_code=503, detail="analytics is disabled (ANALYTICS_ENABLED)")
+
+
+def _db_unavailable(e: Exception) -> HTTPException:
+    print(f"Analytics read failed: {e}", file=sys.stderr)
+    return HTTPException(status_code=503, detail="analytics database unavailable")
 
 
 # --- Error handlers (each also records an `error` event, best-effort) -------
@@ -271,9 +282,14 @@ def get_success_rate_from_db(zone: str, date_str: str, group_size: int) -> float
 
 # --- API endpoints ---
 
+# When this process started. Changes on every deploy, restart or redeploy,
+# which is how scripts/verify_persistence.py knows a redeploy has happened.
+STARTED_AT = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "started_at": STARTED_AT, "app_version": APP_VERSION}
 
 
 @app.post("/stats", response_model=StatsResponse)
@@ -467,8 +483,19 @@ def analytics_export(
         if value is not None and not _ISO_PREFIX.match(value):
             raise HTTPException(status_code=400, detail=f"{name} must be ISO 8601 (YYYY-MM-DD...)")
 
+    # Open the database before streaming starts so a missing or unwritable
+    # file is a clean 503 rather than a broken stream.
+    try:
+        events = analytics.iter_events(since=since, until=until, limit=limit)
+        first = next(events, None)
+    except (sqlite3.Error, OSError) as e:
+        raise _db_unavailable(e)
+
     def lines():
-        for ev in analytics.iter_events(since=since, until=until, limit=limit):
+        if first is None:
+            return
+        yield json.dumps(first, default=str) + "\n"
+        for ev in events:
             yield json.dumps(ev, default=str) + "\n"
 
     return StreamingResponse(
@@ -481,7 +508,10 @@ def analytics_export(
 @app.get("/debug/analytics", dependencies=[Depends(require_analytics_token)])
 def debug_analytics(limit: int = Query(10, ge=1, le=500)):
     """The most recent events, newest first."""
-    rows = list(analytics.iter_events(limit=limit, order="desc"))
+    try:
+        rows = list(analytics.iter_events(limit=limit, order="desc"))
+    except (sqlite3.Error, OSError) as e:
+        raise _db_unavailable(e)
     return {"db_path": str(analytics.db_path()), "row_count": len(rows), "rows": rows}
 
 
@@ -490,5 +520,5 @@ def analytics_summary():
     """High-level usage statistics for the tool."""
     try:
         return analytics.summary()
-    except sqlite3.Error as e:
-        raise HTTPException(status_code=500, detail=f"analytics database error: {e}")
+    except (sqlite3.Error, OSError) as e:
+        raise _db_unavailable(e)

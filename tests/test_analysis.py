@@ -183,7 +183,8 @@ def test_pull_rejects_bad_dates(fixture_db):
 
 def test_transform_known_answers(tables):
     assert tables.n_pulled == EXPECTED_PULLED and tables.n_kept == EXPECTED_KEPT
-    assert tables.removed == {"legacy_schema": 1, "test_source": 1, "api_source": 1, "bot": 1}
+    assert tables.removed == {"legacy_schema": 1, "test_source": 1, "api_source": 1, "bot": 1,
+                              "bot_burst": 0, "rate_limited": 0}
     assert tables.all_events["removed_reason"].notna().sum() == 4
 
     v = tables.visits.set_index("visit_id")
@@ -399,3 +400,73 @@ def test_cli_end_to_end(fixture_db, tmp_path, capsys):
     assert "timestamps_ordered" in capsys.readouterr().err and not (tmp_path / "reports2").exists()
     assert main(bad + ["--allow-failed-checks"]) == 0
     assert "Data-quality checks failed" in next((tmp_path / "reports2").glob("*.html")).read_text(encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# behavioural bot rule, server 429 rows, legacy rows in the report
+# (added 2026-10-16 after the end-to-end run in ANALYTICS_NOTES section 9)
+# ---------------------------------------------------------------------------
+
+def _synthetic_rows(n_burst, spacing_s, extra=()):
+    """One normal visit plus one visit making n_burst queries spacing_s apart,
+    with a desktop Chrome user agent (so the UA rule cannot catch it)."""
+    base = pd.Timestamp("2026-05-01T18:00:00Z")
+    chrome = {"device_type": "desktop", "os_family": "Windows", "browser_family": "Chrome", "is_bot": 0}
+    rows, i = [], 0
+
+    def add(t, etype, visitor, visit, **kw):
+        nonlocal i
+        i += 1
+        rows.append({"id": i, "schema_version": 2, "event_type": etype, "event_time_utc": t.isoformat(),
+                     "source": "page", "status": kw.pop("status", "success"), "visitor_id": visitor,
+                     "visit_id": visit, "seq_in_visit": kw.pop("seq", None), **chrome,
+                     "detail": kw.pop("detail", {}), "choices": kw.pop("choices", [])})
+
+    add(base, "page_view", "H", "h1", seq=1)
+    for k in range(3):
+        add(base + pd.Timedelta(seconds=40 * (k + 1)), "get_table", "H", "h1", seq=k + 2,
+            choices=[{"zone": "Core", "permit_date": "2027-07-15", "group_size": 4 - k, "choice_rank": 1}])
+    for k in range(n_burst):
+        add(base + pd.Timedelta(seconds=300 + spacing_s * k), "get_table", "S", "s1", seq=k + 1,
+            choices=[{"zone": "Core", "permit_date": "2027-07-01", "group_size": 1, "choice_rank": 1}])
+    for t, etype, kw in extra:
+        add(base + pd.Timedelta(seconds=t), etype, None, None, **kw)
+    return rows
+
+
+def test_burst_visit_removed_even_with_browser_ua():
+    t = transform.build_tables(_synthetic_rows(n_burst=30, spacing_s=0.2))
+    assert t.removed["bot_burst"] == 30
+    assert set(t.visits["visit_id"]) == {"h1"} and len(t.visitors) == 1
+    assert int(t.visits["n_queries"].sum()) == 3
+
+
+def test_paced_iteration_is_not_a_burst():
+    # 9 queries in 60 s is below the threshold; 10 spread over 10 minutes is too.
+    for n, spacing in ((9, 6.0), (10, 60.0)):
+        t = transform.build_tables(_synthetic_rows(n_burst=n, spacing_s=spacing))
+        assert t.removed["bot_burst"] == 0, (n, spacing)
+        assert set(t.visits["visit_id"]) == {"h1", "s1"}
+
+
+def test_server_429_rows_removed_but_page_errors_kept():
+    rl = {"endpoint": "/estimate_odds", "method": "POST", "http_status": 429, "message": "rate_limited"}
+    v422 = {"endpoint": "/estimate_odds", "method": "POST", "http_status": 422, "message": "validation_error"}
+    t = transform.build_tables(_synthetic_rows(0, 1, extra=[
+        (500, "error", {"status": "error", "detail": rl}),
+        (501, "error", {"status": "error", "detail": rl}),
+        (502, "error", {"status": "error", "detail": v422}),
+    ]))
+    assert t.removed["rate_limited"] == 2
+    assert int((t.events["event_type"] == "error").sum()) == 1
+
+
+def test_legacy_rows_listed_in_report_with_original_timestamps(tables, tmp_path):
+    results = checks.run_checks(tables, SINCE, UNTIL, today=TODAY)
+    m = metrics.compute_all(tables, SINCE, UNTIL)
+    html = report.render_report(tables, results, m, since=SINCE, until=UNTIL, source="local",
+                                out_dir=tmp_path).read_text(encoding="utf-8")
+    leg = tables.all_events[tables.all_events["removed_reason"] == "legacy_schema"]
+    assert len(leg) == 1
+    assert "Legacy rows (schema v1)" in html
+    assert leg["event_time_utc"].iloc[0] in html

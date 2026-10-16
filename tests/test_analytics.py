@@ -66,6 +66,7 @@ QUERY = {
         {"zone": "Colchuck", "month": 8, "day": 6, "group_size": 2},
     ],
 }
+AUTH = {"Authorization": "Bearer test-token"}
 IDS = {"visitor_id": "v-1111", "visit_id": "s-2222", "seq_in_visit": 3, "is_new_visitor": False}
 
 
@@ -474,3 +475,47 @@ def test_failing_analytics_write_does_not_break_responses(client, db_path, monke
     assert client.post("/log_event", content=json.dumps(
         {"event_type": "timing", "event_id": 1, "visitor_id": "v-1111", "client_ms": 5})).status_code == 204
     assert "Analytics logging failed" in capsys.readouterr().err
+
+
+def test_analytics_disabled_is_a_no_op(tmp_path, monkeypatch):
+    p = tmp_path / "never" / "analytics.db"
+    monkeypatch.setenv("ANALYTICS_DB_PATH", str(p))
+    monkeypatch.setenv("ANALYTICS_ENABLED", "0")
+    monkeypatch.setenv("ANALYTICS_TOKEN", "test-token")
+    main.limiter.enabled = False
+    try:
+        with TestClient(main.app, raise_server_exceptions=False) as c:
+            r = c.post("/estimate_odds", json={**QUERY, **IDS})
+            assert r.status_code == 200 and r.json()["event_id"] is None and len(r.json()["choices"]) == 2
+            assert c.post("/heatmap_odds", json={"zone": "Core", "group_size": 4, **IDS}).status_code == 200
+            assert c.post("/log_event", content=json.dumps({"event_type": "page_view", **IDS})).status_code == 204
+            assert c.get("/").status_code == 200
+            assert c.get("/analytics/summary").status_code == 401   # token still checked first
+            assert c.get("/analytics/summary", headers=AUTH).status_code == 503
+    finally:
+        main.limiter.enabled = True
+    assert not p.parent.exists()   # nothing was created on disk
+
+
+def test_unwritable_db_path_keeps_the_tool_working(tmp_path, monkeypatch):
+    blocker = tmp_path / "a_file"
+    blocker.write_text("not a directory")
+    monkeypatch.setenv("ANALYTICS_DB_PATH", str(blocker / "sub" / "analytics.db"))
+    monkeypatch.setenv("ANALYTICS_TOKEN", "test-token")
+    main.limiter.enabled = False
+    try:
+        with TestClient(main.app, raise_server_exceptions=False) as c:
+            r = c.post("/estimate_odds", json={**QUERY, **IDS})
+            assert r.status_code == 200 and r.json()["event_id"] is None
+            assert c.post("/heatmap_odds", json={"zone": "Core", "group_size": 4, **IDS}).status_code == 200
+            assert c.post("/log_event", content=json.dumps({"event_type": "page_view", **IDS})).status_code == 204
+            for path in ("/analytics/summary", "/analytics/export", "/debug/analytics"):
+                assert c.get(path, headers=AUTH).status_code == 503, path
+    finally:
+        main.limiter.enabled = True
+
+
+def test_health_reports_process_start(client):
+    body = client.get("/health").json()
+    assert body["status"] == "ok" and body["started_at"] == main.STARTED_AT
+    assert "app_version" in body

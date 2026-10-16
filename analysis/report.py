@@ -24,7 +24,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 import pandas as pd  # noqa: E402
 
 from .checks import CheckResult, failures  # noqa: E402
-from .transform import Tables  # noqa: E402
+from .transform import BURST_EVENTS, BURST_WINDOW, Tables  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUT_DIR = ROOT / "reports"
@@ -163,8 +163,37 @@ def quality_section(tables: Tables, checks: List[CheckResult], meta: Dict) -> st
 <div class='grid'>
 <div><h3>Checks</h3><ul class='checks'>{check_items}</ul></div>
 <div><h3>Rows removed, by reason</h3><table><tr><th>reason</th><th>rows</th></tr>{rem_rows}</table>
-<p class='meta'>legacy_schema = imported v1 rows; test_source = /debug/log_test rows; api_source = calls without a visitor id (scripts, direct API use, server errors on non-page requests); bot = crawler or headless user agents.</p></div>
+<p class='meta'>legacy_schema = imported v1 rows (listed under "Legacy rows" below); test_source = /debug/log_test rows; api_source = calls without a visitor id (scripts, direct API use, server errors on non-page requests); bot = crawler or headless user agents; bot_burst = visits making {BURST_EVENTS}+ query/heatmap requests within {int(BURST_WINDOW.total_seconds())} s, whatever their user agent; rate_limited = the server's own 429 rows (the page reports a throttled visitor separately).</p></div>
 <div><h3>Null rates on kept rows</h3>{_table(nr, max_rows=40, index=False)}</div>
+</div>{legacy_section(tables)}"""
+
+
+def legacy_section(tables: Tables) -> str:
+    """Imported v1 rows, with their original timestamps. They are excluded
+    from every metric (no visits, referrers or geography), but shown here so
+    nothing pulled is invisible."""
+    ae = tables.all_events
+    leg = ae[ae["removed_reason"] == "legacy_schema"] if "removed_reason" in ae.columns else ae.iloc[0:0]
+    if leg.empty:
+        return ""
+    by_day = (leg.assign(day=leg["day"].dt.strftime("%Y-%m-%d"))
+              .groupby("day").agg(rows=("id", "size"),
+                                  first_utc=("event_time_utc", "min"),
+                                  last_utc=("event_time_utc", "max"),
+                                  visitors=("visitor_id", "nunique")))
+    zones = []
+    for ch in leg["choices"]:
+        zones.extend(c.get("zone") for c in ch if isinstance(c, dict))
+    zone_counts = pd.Series(zones, dtype="object").value_counts().rename("choices").to_frame() if zones else None
+    text = (f"{len(leg)} rows imported from the v1 <code>query_events</code> table, "
+            f"from {_esc(leg['event_time_utc'].min())} to {_esc(leg['event_time_utc'].max())} (UTC, as originally recorded). "
+            f"{leg['visitor_id'].nunique()} distinct v1 session ids. Excluded from the sections below.")
+    return f"""
+<h3>Legacy rows (schema v1)</h3>
+<p class='narrative'>{text}</p>
+<div class='grid'>
+<div>{_table(by_day, max_rows=60)}</div>
+<div>{_table(zone_counts) if zone_counts is not None else ''}</div>
 </div>"""
 
 

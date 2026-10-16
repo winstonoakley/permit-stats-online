@@ -1,0 +1,139 @@
+# Usage report for the permit odds site, built from the live analytics export.
+#
+# Runs daily from Feb 10 to Mar 5 (the lottery window is Feb 15 - Mar 1) and
+# every Monday the rest of the year. Each run pulls every event since
+# Jan 1 (or ANALYTICS_SINCE, whichever is later), renders the HTML report,
+# and keeps it plus an encrypted copy of the raw export as run artifacts for
+# 90 days. The raw export doubles as an off-Railway backup of the volume.
+#
+# A failed data-quality check (e.g. a lottery-window day with zero events,
+# which means collection broke) fails the run, and GitHub emails you.
+#
+# Setup (repo Settings > Secrets and variables > Actions):
+#   secret   ANALYTICS_TOKEN     same value as on Railway
+#   secret   BACKUP_PASSPHRASE   any long passphrase; without it the raw
+#                                export is not uploaded
+#   variable ANALYTICS_URL       e.g. https://enchantmentsodds.com
+#   variable ANALYTICS_SINCE     the day v2 went live, e.g. 2026-10-20
+#
+# Decrypt a backup:  gpg --decrypt events-raw.tar.gz.gpg > events-raw.tar.gz
+name: Analytics report
+
+on:
+  schedule:
+    - cron: "17 15 10-28 2 *"   # Feb 10-28, 08:17 PDT / 07:17 PST
+    - cron: "17 15 1-5 3 *"     # Mar 1-5
+    - cron: "17 15 * * 1"       # every Monday
+  workflow_dispatch:
+    inputs:
+      since:
+        description: "Start date (YYYY-MM-DD); blank = Jan 1 or ANALYTICS_SINCE"
+        required: false
+      until:
+        description: "End date, exclusive (YYYY-MM-DD); blank = now"
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: analytics-report
+  cancel-in-progress: false
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ANALYTICS_URL: ${{ vars.ANALYTICS_URL }}
+      ANALYTICS_TOKEN: ${{ secrets.ANALYTICS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-analysis.txt
+
+      - name: Install analysis dependencies
+        run: pip install -r requirements-analysis.txt
+
+      - name: Work out the date range
+        id: range
+        env:
+          IN_SINCE: ${{ inputs.since }}
+          IN_UNTIL: ${{ inputs.until }}
+          FLOOR: ${{ vars.ANALYTICS_SINCE }}
+        run: |
+          if [ -z "$ANALYTICS_URL" ] || [ -z "$ANALYTICS_TOKEN" ]; then
+            echo "::error::Set the ANALYTICS_URL variable and the ANALYTICS_TOKEN secret."; exit 1
+          fi
+          since="$IN_SINCE"
+          if [ -z "$since" ]; then
+            since="$(date -u +%Y)-01-01"
+            # Before collection started there is nothing to find, and the
+            # lottery-window check would fail on those empty days.
+            if [ -n "$FLOOR" ] && [[ "$FLOOR" > "$since" ]]; then since="$FLOOR"; fi
+          fi
+          echo "since=$since" >> "$GITHUB_OUTPUT"
+          echo "until=$IN_UNTIL" >> "$GITHUB_OUTPUT"
+          echo "Report range: $since to ${IN_UNTIL:-now}"
+
+      - name: Pull and render the report
+        id: report
+        env:
+          SINCE: ${{ steps.range.outputs.since }}
+          UNTIL: ${{ steps.range.outputs.until }}
+        run: |
+          set +e
+          args=(report --source prod --since "$SINCE" --refresh)
+          [ -n "$UNTIL" ] && args+=(--until "$UNTIL")
+          python -m analysis "${args[@]}" | tee report.log
+          code=${PIPESTATUS[0]}
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Analytics report ($SINCE to ${UNTIL:-now})"
+            echo '```'
+            cat report.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+
+      - name: Encrypt the raw export
+        if: always()
+        env:
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          if [ ! -d data/raw ]; then echo "No raw export was pulled."; exit 0; fi
+          if [ -z "$BACKUP_PASSPHRASE" ]; then
+            echo "::warning::BACKUP_PASSPHRASE is not set, so the raw export is not kept."; exit 0
+          fi
+          tar -czf events-raw.tar.gz data/raw
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$BACKUP_PASSPHRASE" \
+              --symmetric --cipher-algo AES256 -o events-raw.tar.gz.gpg events-raw.tar.gz
+          rm events-raw.tar.gz
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: analytics-report-${{ steps.range.outputs.since }}-run${{ github.run_number }}
+          path: reports/*.html
+          if-no-files-found: ignore
+          retention-days: 90
+
+      - name: Upload the encrypted raw export
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: analytics-raw-${{ steps.range.outputs.since }}-run${{ github.run_number }}
+          path: events-raw.tar.gz.gpg
+          if-no-files-found: ignore
+          retention-days: 90
+
+      - name: Fail if the data-quality checks failed
+        if: steps.report.outputs.exit_code != '0'
+        run: |
+          echo "::error::python -m analysis exited with ${{ steps.report.outputs.exit_code }}. See the step summary; 2 means a data-quality check failed, so collection may be broken."
+          exit 1
