@@ -449,6 +449,31 @@ The full checklist, including the redeploy test, is in `DEPLOY_ANALYTICS.md`.
    exported files are the backup. `/analytics/summary` gives a quick
    sanity check.
 
+**Deployment log**
+
+- 2026-10-16, commit `63f7b79` merged to `main` and pushed. **Not
+  deployed.** Railway is no longer set up for this site and no host
+  deploys any branch, so there is no volume, no `/data` mount and no
+  production URL. `ANALYTICS_DB_PATH`, `ANALYTICS_TOKEN` and
+  `ALLOWED_ORIGIN` are unset in production because there is no
+  production. The custom start command with `--forwarded-allow-ips="*"`
+  is therefore also still outstanding; without it the rate limiter will
+  see Railway's proxy as a single client.
+  - `scripts/verify_persistence.py`: **not run.** Nothing about
+    persistence on a volume has been proven, so step 5 of
+    `DEPLOY_ANALYTICS.md` is still the open question it was before.
+  - Scheduled report: the workflow is on `main`, GitHub secrets
+    `ANALYTICS_TOKEN` and `BACKUP_PASSPHRASE` are set, and the variable
+    `ANALYTICS_SINCE` is `2026-10-16`. The variable `ANALYTICS_URL` is
+    not set, so the workflow would fail on its first step. It has been
+    disabled with `gh workflow disable analytics-report.yml` to stop the
+    Monday cron emailing a failure every week. Re-enable it with
+    `gh workflow enable analytics-report.yml` once a URL exists, and
+    change `ANALYTICS_SINCE` to the real go-live date.
+  - The token in GitHub secrets was generated for a deployment that does
+    not exist yet. Whatever host is chosen must be given that same value
+    as `ANALYTICS_TOKEN`, or the secret must be replaced on both sides.
+
 ### 7.5 What happened to the existing rows
 
 Migration is automatic and keeps everything. Each `query_events` row
