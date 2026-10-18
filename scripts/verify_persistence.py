@@ -1,7 +1,7 @@
 """
 Prove that analytics events survive a redeploy.
 
-    python scripts/verify_persistence.py --url https://<your-domain> [--redeploy]
+    python scripts/verify_persistence.py --url https://permitodds.com [--redeploy]
 
 Needs ANALYTICS_TOKEN in the environment (or --token). Standard library only,
 so it runs from any Python 3.9+ without installing anything.
@@ -69,7 +69,7 @@ def summary(base, token):
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--url", required=True, help="site base URL, e.g. https://enchantmentsodds.com")
+    ap.add_argument("--url", required=True, help="site base URL, e.g. https://permitodds.com")
     ap.add_argument("--token", default=os.getenv("ANALYTICS_TOKEN"), help="default: $ANALYTICS_TOKEN")
     ap.add_argument("--redeploy", action="store_true", help="run `railway redeploy -y` instead of asking you to")
     ap.add_argument("--service", help="Railway service name, passed to `railway redeploy -s`")

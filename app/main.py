@@ -26,7 +26,7 @@ app = FastAPI()
 app.state.limiter = limiter
 
 # Restrict CORS to the deployment origin; fall back to * for local dev.
-# Set ALLOWED_ORIGIN env var in production (e.g. "https://yourdomain.com").
+# Set ALLOWED_ORIGIN env var in production ("https://permitodds.com").
 _allowed_origin = os.getenv("ALLOWED_ORIGIN", "*")
 app.add_middleware(
     CORSMiddleware,

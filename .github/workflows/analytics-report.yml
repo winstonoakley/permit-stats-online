@@ -13,7 +13,7 @@
 #   secret   ANALYTICS_TOKEN     same value as on Railway
 #   secret   BACKUP_PASSPHRASE   any long passphrase; without it the raw
 #                                export is not uploaded
-#   variable ANALYTICS_URL       e.g. https://enchantmentsodds.com
+#   variable ANALYTICS_URL       e.g. https://permitodds.com
 #   variable ANALYTICS_SINCE     the day v2 went live, e.g. 2026-10-20
 #
 # Decrypt a backup:  gpg --decrypt events-raw.tar.gz.gpg > events-raw.tar.gz

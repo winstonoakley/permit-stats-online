@@ -444,7 +444,7 @@ The full checklist, including the redeploy test, is in `DEPLOY_ANALYTICS.md`.
 4. To get country/region, put Cloudflare in front of the domain; nothing
    else is needed.
 5. Pull data with the token, for example
-   `curl -H "Authorization: Bearer $ANALYTICS_TOKEN" "https://<domain>/analytics/export?since=2027-02-01" > events.jsonl`.
+   `curl -H "Authorization: Bearer $ANALYTICS_TOKEN" "https://permitodds.com/analytics/export?since=2027-02-01" > events.jsonl`.
    Do this daily during the lottery window and monthly otherwise; the
    exported files are the backup. `/analytics/summary` gives a quick
    sanity check.
@@ -473,6 +473,10 @@ The full checklist, including the redeploy test, is in `DEPLOY_ANALYTICS.md`.
   - The token in GitHub secrets was generated for a deployment that does
     not exist yet. Whatever host is chosen must be given that same value
     as `ANALYTICS_TOKEN`, or the secret must be replaced on both sides.
+- 2026-10-18, domain **permitodds.com** registered. Hosting stays on
+  Railway (re-created per `DEPLOY_ANALYTICS.md`), and the production URL
+  will be `https://permitodds.com`, which is the value for
+  `ALLOWED_ORIGIN` on Railway and `ANALYTICS_URL` in GitHub.
 
 ### 7.5 What happened to the existing rows
 
