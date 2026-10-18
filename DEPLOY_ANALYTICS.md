@@ -35,8 +35,10 @@ survives a redeploy.
       Workspace > Usage, set a usage limit (for example $10) so a bot
       flood in the lottery window cannot run up the bill.
 
-The first build may start before the volume and variables exist. That is
-fine; steps 2 to 4 trigger a redeploy.
+The first deploy **will fail** with "no start command": Railpack detects
+Python but only looks for a root `main.py`/`app.py`, and this app lives in
+`app/main.py`. That is expected. Do steps 2 to 4 (volume, variables,
+start command), then press Redeploy.
 
 ## 2. Volume
 
@@ -57,11 +59,16 @@ fine; steps 2 to 4 trigger a redeploy.
 | `ANALYTICS_TOKEN` | the token from step 0 | Unlocks `/analytics/export`, `/analytics/summary`, `/debug/analytics`. Without it they answer 503. |
 | `ALLOWED_ORIGIN` | `https://permitodds.com` | CORS. No trailing slash. Defaults to `*` if unset. |
 | `ANALYTICS_ENABLED` | leave unset | Set to `0` only to switch collection off without a code change. |
+| `RAILPACK_START_CMD` | the uvicorn command from step 4 | Sets the start command; Railpack cannot find `app/main.py` on its own. |
 | `RAILWAY_RUN_UID` | `0`, **only if** the logs show "Permission denied" on `/data` | Images that run as a non-root user cannot write to a fresh volume. |
 
 ## 4. Start command (rate limiting)
 
-- [ ] Settings > Deploy > **Custom Start Command**:
+- [ ] Easiest: add a service variable **`RAILPACK_START_CMD`** with the
+      command below (no quotes around the whole thing), then Redeploy.
+      Railpack reads it at build time; it outranks auto-detection. The
+      dashboard field (Settings > Deploy > Start Command) works too, but
+      its location moves between Railway UI versions:
 
       uvicorn app.main:app --host 0.0.0.0 --port $PORT --forwarded-allow-ips="*"
 
