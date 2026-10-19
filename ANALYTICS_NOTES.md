@@ -477,6 +477,13 @@ The full checklist, including the redeploy test, is in `DEPLOY_ANALYTICS.md`.
   Railway (re-created per `DEPLOY_ANALYTICS.md`), and the production URL
   will be `https://permitodds.com`, which is the value for
   `ALLOWED_ORIGIN` on Railway and `ANALYTICS_URL` in GitHub.
+- 2026-10-18, **deployed.** New Railway service from `main`; start command
+  in `railpack.json`; volume at `/data`; https://permitodds.com live via
+  Cloudflare. `scripts/verify_persistence.py`: **PASS** (events survive a
+  redeploy). First run failed because `ANALYTICS_DB_PATH` had been entered
+  as `=/data/analytics.db`, which silently put the DB on the container
+  disk; the script caught it. Remaining: GitHub `ANALYTICS_URL`, new
+  `ANALYTICS_SINCE`, re-enable the report workflow.
 
 ### 7.5 What happened to the existing rows
 
