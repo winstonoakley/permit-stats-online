@@ -44,9 +44,16 @@ def raw_path(raw_dir: Path, source: str, since: str, until: Optional[str], pull_
 # Sources
 # ---------------------------------------------------------------------------
 
+# Python's default "Python-urllib/3.x" User-Agent is banned by Cloudflare's
+# Browser Integrity Check (HTTP 403, error 1010), so name the client.
+USER_AGENT = "permitodds-analytics-report/1.0 (+https://permitodds.com)"
+
+
 def _http_get(url: str, token: str, timeout: int = 300) -> bytes:
     """Kept as a module-level function so tests can substitute it."""
-    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}", "Accept": "application/x-ndjson"})
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}",
+                                               "Accept": "application/x-ndjson",
+                                               "User-Agent": USER_AGENT})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.read()
 
