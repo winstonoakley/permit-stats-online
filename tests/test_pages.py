@@ -69,6 +69,15 @@ def test_zone_page_has_calendar_and_month_table(client):
     assert "Group size:" not in page          # only the Core has a size picker
 
 
+@pytest.mark.parametrize("slug", ["/zones/colchuck", "/zones/snow", "/zones/eightmile", "/zones/stuart"])
+def test_non_core_zone_pages_name_no_group_size(client, slug):
+    # Group size does not change the odds outside the Core, so these pages
+    # must not present their figures as being for a particular party size.
+    page = client.get(slug).text.lower()
+    assert not re.search(r"party of|two-person|solo|for a pair", page)
+    assert "group size does not affect the odds in this zone" in page
+
+
 def test_core_group_size(client):
     default = client.get("/zones/core").text
     solo = client.get("/zones/core?size=1").text

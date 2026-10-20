@@ -50,7 +50,7 @@ A common mistake is listing three variations of the same hard choice, such as th
 
 ## What the numbers look like
 
-Every application is recorded on recreation.gov with its choices and outcome, and that history is what this site is built on. From the last five lotteries, the predicted 2027 first-choice odds for the median day of the season, for a two-person group, are roughly:
+Every application is recorded on recreation.gov with its choices and outcome, and that history is what this site is built on. From the last five lotteries, the predicted 2027 first-choice odds for the median day of the season are roughly (Core for a two-person group; group size makes no difference in the other zones):
 
 | Zone | Median first-choice odds |
 |---|---|

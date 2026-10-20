@@ -265,16 +265,19 @@ def zone_odds_section(slug: str, zone: str, label: str, group_size: int) -> str:
     season = zone_season(zone, group_size)
     predicted = season["predicted_by_date"]
     dates = {iso: dt.date.fromisoformat(iso) for iso in predicted}
-    party = "solo" if group_size == 1 else f"party of {group_size}"
+    # Only the Core's odds depend on group size, so only its headings name one.
+    sized = zone in GROUP_SIZE_ZONES
+    party = (", solo" if group_size == 1 else f", party of {group_size}") if sized else ""
 
-    parts = [f'<h2 id="odds">Predicted {PERMIT_YEAR} odds by date, {party}</h2>']
+    parts = [f'<h2 id="odds">Predicted {PERMIT_YEAR} odds by date{party}</h2>']
     parts.append(
         f"<p>Each day shows the estimated chance that a {label} first choice for that entry date "
         f"wins in the {PERMIT_YEAR} lottery. The median day of the season is "
         f"<strong>{fmt_pct(_median(predicted.values()))}</strong>. "
-        'The <a href="/methodology">methodology page</a> explains how these are estimated.</p>'
+        + ("" if sized else "Group size does not affect the odds in this zone. ")
+        + 'The <a href="/methodology">methodology page</a> explains how these are estimated.</p>'
     )
-    if zone in GROUP_SIZE_ZONES:
+    if sized:
         links = []
         for g in range(1, 9):
             attr = ' aria-current="true"' if g == group_size else ""
@@ -308,7 +311,7 @@ def zone_odds_section(slug: str, zone: str, label: str, group_size: int) -> str:
             for y in years
         )
         rows.append(f"<tr><th>{calendar.month_abbr[m]}</th><td><strong>{fmt_pct(pred)}</strong></td>{past}</tr>")
-    parts.append(f'<h2 id="by-month">Average odds by month, {party}</h2>')
+    parts.append(f'<h2 id="by-month">Average odds by month{party}</h2>')
     parts.append(
         f"<p>The {PERMIT_YEAR} column averages the predictions above. The other columns average "
         "the simulated odds of the comparable dates in each past lottery.</p>"
@@ -319,7 +322,7 @@ def zone_odds_section(slug: str, zone: str, label: str, group_size: int) -> str:
         "<tbody>" + "".join(rows) + "</tbody></table></div>"
     )
 
-    calc = f"/?zone={zone}" + (f"&size={group_size}" if zone in GROUP_SIZE_ZONES else "")
+    calc = f"/?zone={zone}" + (f"&size={group_size}" if sized else "")
     parts.append(
         f'<p class="cta"><a class="cta-button" href="{esc(calc)}">Run your exact choices in the calculator</a></p>'
     )
@@ -375,12 +378,12 @@ def render_zones_index() -> str:
         "<p>The Enchantment Permit Area is split into five zones, and an overnight permit is for one "
         "of them. Odds differ by more than ten times between the hardest and the easiest. Each zone "
         f"page has a calendar of predicted {PERMIT_YEAR} odds for every date of the season.</p>"
-        f'<h2>Predicted {PERMIT_YEAR} first-choice odds, party of {DEFAULT_GROUP_SIZE}</h2>'
+        f'<h2>Predicted {PERMIT_YEAR} first-choice odds</h2>'
         '<div class="table-scroll"><table class="month-table"><thead><tr>'
         "<th>Zone</th><th>Median day</th><th>July average</th><th>September average</th>"
         "</tr></thead><tbody>" + "".join(rows) + "</tbody></table></div>"
-        '<p>Group size changes the odds only in the Core; see the '
-        '<a href="/zones/core">Core page</a> for every size. '
+        f'<p>Group size changes the odds only in the Core; its figures are for a party of {DEFAULT_GROUP_SIZE}, '
+        'and the <a href="/zones/core">Core page</a> has every size. '
         '<a href="/lottery">How the lottery works</a> describes each zone and the draw.</p>'
     )
     return page_shell("/zones", body)

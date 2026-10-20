@@ -45,7 +45,7 @@ The historical columns are conditioned the same way, so the per-year totals are 
 
 ## The heatmap calendar
 
-The calendar behind each date field runs the same first-choice prediction for every day in the season for the zone and group size you picked, then colors each day by its predicted odds: green at 30% or better, orange from 5% to 30%, red below 5%, and gray where no data exists. For a second or third choice, the calendar scales each day by the chance that your earlier choices lose. The [zone pages](/zones) show the same first-choice calendar for a party of two. It is meant for picking dates, not for the final answer; the full three-choice calculation is what the results box shows.
+The calendar behind each date field runs the same first-choice prediction for every day in the season for the zone and group size you picked, then colors each day by its predicted odds: green at 30% or better, orange from 5% to 30%, red below 5%, and gray where no data exists. For a second or third choice, the calendar scales each day by the chance that your earlier choices lose. The [zone pages](/zones) show the same first-choice calendar, with a group-size picker on the Core page. It is meant for picking dates, not for the final answer; the full three-choice calculation is what the results box shows.
 
 ## Known limitations
 

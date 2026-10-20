@@ -6,13 +6,15 @@ Answers use this site's own estimates for the 2027 season unless they say otherw
 
 Eightmile / Caroline, then Stuart, then Snow. Colchuck and the Core are in a different league.
 
-| Zone | Median first-choice odds, party of 2 |
+| Zone | Median first-choice odds |
 |---|---|
 | [Eightmile / Caroline](/zones/eightmile) | 24% |
 | [Stuart](/zones/stuart) | 15% |
 | [Snow](/zones/snow) | 11% |
 | [Colchuck](/zones/colchuck) | 4% |
 | [Core](/zones/core) | 3% |
+
+Core figures are for a party of two; group size does not change the odds in the other zones.
 
 If your goal is simply to camp somewhere in the permit area, Eightmile has about twice the median odds of Snow and six to nine times the odds of Colchuck or the Core.
 
@@ -24,7 +26,7 @@ The Core is the only zone where group size changes the odds. A solo applicant ha
 
 ## Is it easier on a weekday?
 
-Yes. Friday and Saturday entries are the hardest in every zone, at roughly two-thirds the odds of a Sunday through Thursday entry. Season averages for a party of two:
+Yes. Friday and Saturday entries are the hardest in every zone, at roughly two-thirds the odds of a Sunday through Thursday entry. Season averages (Core for a party of two):
 
 | Zone | Mon–Thu | Fri–Sat | Sun |
 |---|---|---|---|
@@ -38,7 +40,7 @@ These are season averages, which are pulled up by easy shoulder-season dates. Th
 
 ## Which month is easiest?
 
-October and May, then June. July and August are the hardest everywhere, and September is only slightly better. Average first-choice odds by month for a party of two:
+October and May, then June. July and August are the hardest everywhere, and September is only slightly better. Average first-choice odds by month (Core for a party of two):
 
 | Zone | May | Jun | Jul | Aug | Sep | Oct |
 |---|---|---|---|---|---|---|
