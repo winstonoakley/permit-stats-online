@@ -22,7 +22,7 @@ Titles are under 60 characters; descriptions under 155. "Enchantments" appears i
 
 Header, left to right: **Calculator** · **Zones** (the `/zones` index) · **How the lottery works** · **FAQ**
 
-Footer: About · Methodology · Privacy · Terms · "Not affiliated with the U.S. Forest Service or recreation.gov" · consent-settings link (once ads are live)
+Footer: About · Methodology · Privacy · Terms · "Not affiliated with the U.S. Forest Service or Recreation.gov" · consent-settings link (once ads are live)
 
 ## Other head tags for every page
 

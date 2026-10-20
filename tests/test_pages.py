@@ -44,6 +44,13 @@ def test_no_placeholders_or_comments_published(client, slug):
     assert "HELD UNTIL" not in page
 
 
+@pytest.mark.parametrize("slug", pages.slugs())
+def test_recreation_gov_is_capitalized(client, slug):
+    # Visible text only: link targets keep the lowercase hostname.
+    text = re.sub(r'(?:href|src|content)="[^"]*"', "", client.get(slug).text)
+    assert "recreation.gov" not in text
+
+
 def test_parked_ads_text_stays_out():
     # The ads paragraphs are in the source, inside comments, and must not render.
     assert "AdSense" in (pages.CONTENT_DIR / "privacy.md").read_text(encoding="utf-8")

@@ -12,7 +12,7 @@ For each year the site holds a table of first-choice outcomes for every combinat
 
 The percentage for a zone and date in a given year is not simply "winners divided by applicants" for that date. A raw win rate is noisy when only a few people applied, and it is zero for any date where the handful of applicants happened to lose.
 
-Instead, each year's lottery is re-run many times with the same applications in a different random order, following the same rule recreation.gov uses: applications are processed in draw order, and each one takes the first of its three choices that still has room. The odds for a choice are the share of simulated lotteries in which that choice won. A value of 10% means the choice won in 100 of 1,000 simulated draws. This smooths out the luck of the actual draw and gives a number for dates that had only a few applicants.
+Instead, each year's lottery is re-run many times with the same applications in a different random order, following the same rule Recreation.gov uses: applications are processed in draw order, and each one takes the first of its three choices that still has room. The odds for a choice are the share of simulated lotteries in which that choice won. A value of 10% means the choice won in 100 of 1,000 simulated draws. This smooths out the luck of the actual draw and gives a number for dates that had only a few applicants.
 
 ## Comparable dates
 
@@ -53,7 +53,7 @@ The calendar behind each date field runs the same first-choice prediction for ev
 - **Small samples.** Odd-looking single days, especially a lone red day inside a green week in late October or early May, are usually a date with very few applicants. Trust the surrounding days more than the outlier.
 - **Nights are ignored.** The lottery asks how many nights you want. The site treats every application as a single entry date and does not model how longer stays consume quota.
 - **The Core group-size scaling** is a median ratio applied to a specific date. It is a reasonable approximation and no more.
-- **Nothing here is official.** The Forest Service and recreation.gov do not publish odds and have no connection to this site.
+- **Nothing here is official.** The Forest Service and Recreation.gov do not publish odds and have no connection to this site.
 
 ## How the data is built
 

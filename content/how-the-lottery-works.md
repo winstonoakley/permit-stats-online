@@ -1,6 +1,6 @@
 # How the Enchantments Lottery Works
 
-The Enchantments are a chain of alpine lakes in the Alpine Lakes Wilderness near Leavenworth, Washington. To camp there between May 15 and October 31 you need an overnight permit from the Forest Service, and almost all of those permits are handed out through a lottery run on recreation.gov each February. This page explains what the lottery is, how applications are drawn, what your realistic options are if you lose, and where the odds on this site come from.
+The Enchantments are a chain of alpine lakes in the Alpine Lakes Wilderness near Leavenworth, Washington. To camp there between May 15 and October 31 you need an overnight permit from the Forest Service, and almost all of those permits are handed out through a lottery run on Recreation.gov each February. This page explains what the lottery is, how applications are drawn, what your realistic options are if you lose, and where the odds on this site come from.
 
 ## The basics
 
@@ -13,7 +13,7 @@ The Enchantments are a chain of alpine lakes in the Alpine Lakes Wilderness near
 | Permit fee if you win | $5 per person per day |
 | Unclaimed permits released | April 1, first come, first served |
 | Applications per person | One, with up to two alternate choices |
-| Where | recreation.gov, "Enchantment Permit Area Advanced Lottery" |
+| Where | Recreation.gov, "Enchantment Permit Area Advanced Lottery" |
 
 Day hiking needs only a free, self-issued day-use permit, available at the trailheads. The lottery permit applies to overnight stays from May 15 through October 31; the lakes are usually snowbound until late June and again by late October.
 
@@ -39,7 +39,7 @@ You cannot change your dates, zones, or group size after you submit. Pick carefu
 
 This is the part that matters for strategy.
 
-Each application lists a first choice and up to two alternates. Each choice is a zone, an entry date, a number of nights, and a group size. When the lottery runs, recreation.gov puts every application in random order and goes through them one at a time. For each application it checks the first choice. If that zone still has room on that date for that group, the application wins it and the draw moves on. If not, it checks the second choice, then the third. If none of the three fit, the application loses.
+Each application lists a first choice and up to two alternates. Each choice is a zone, an entry date, a number of nights, and a group size. When the lottery runs, Recreation.gov puts every application in random order and goes through them one at a time. For each application it checks the first choice. If that zone still has room on that date for that group, the application wins it and the draw moves on. If not, it checks the second choice, then the third. If none of the three fit, the application loses.
 
 Two consequences follow from that:
 
@@ -50,7 +50,7 @@ A common mistake is listing three variations of the same hard choice, such as th
 
 ## What the numbers look like
 
-Every application is recorded on recreation.gov with its choices and outcome, and that history is what this site is built on. From the last five lotteries, the predicted 2027 first-choice odds for the median day of the season are roughly (Core for a two-person group; group size makes no difference in the other zones):
+Every application is recorded on Recreation.gov with its choices and outcome, and that history is what this site is built on. From the last five lotteries, the predicted 2027 first-choice odds for the median day of the season are roughly (Core for a two-person group; group size makes no difference in the other zones):
 
 | Zone | Median first-choice odds |
 |---|---|
@@ -66,9 +66,9 @@ Those are medians across every day of the season. July and August in the Core ru
 
 Most applicants do. There are three other routes in.
 
-- **The April release.** Winners have to claim and pay for their permit by a deadline in March. Everything unclaimed goes back into the recreation.gov reservation system on April 1. It is first come, first served, and popular dates go within minutes, but it is a real second chance.
-- **Cancellations.** Permits are refundable up to 22 days before the trip, so people cancel through the season. Cancelled dates reappear on recreation.gov with no announcement. Checking early in the morning a few weeks out works surprisingly often for the smaller zones.
-- **The daily lottery.** Through the season, a share of each zone's quota is held back and given out the day before the entry date, seven days a week. You apply on recreation.gov from a phone, and you must be within one mile of the Wenatchee River Ranger District office in Leavenworth when you do. If more people apply than there are permits, a drawing decides. It is not a line, so there is no reason to camp out at the ranger station.
+- **The April release.** Winners have to claim and pay for their permit by a deadline in March. Everything unclaimed goes back into the Recreation.gov reservation system on April 1. It is first come, first served, and popular dates go within minutes, but it is a real second chance.
+- **Cancellations.** Permits are refundable up to 22 days before the trip, so people cancel through the season. Cancelled dates reappear on Recreation.gov with no announcement. Checking early in the morning a few weeks out works surprisingly often for the smaller zones.
+- **The daily lottery.** Through the season, a share of each zone's quota is held back and given out the day before the entry date, seven days a week. You apply on Recreation.gov from a phone, and you must be within one mile of the Wenatchee River Ranger District office in Leavenworth when you do. If more people apply than there are permits, a drawing decides. It is not a line, so there is no reason to camp out at the ranger station.
 
 ## Rules once you are in
 
@@ -80,6 +80,6 @@ Most applicants do. There are three other routes in.
 
 ## Where these facts come from
 
-Rules and dates are from the Okanogan-Wenatchee National Forest's [Enchantments Overnight Permits](https://www.fs.usda.gov/r06/okanogan-wenatchee/recreation/enchantments-overnight-permits) and [Enchantments](https://www.fs.usda.gov/r06/okanogan-wenatchee/recreation/enchantments) pages and recreation.gov's [advanced lottery](https://www.recreation.gov/permits/233273) and [daily lottery](https://www.recreation.gov/permits/445863) pages. Odds are this site's own estimates, built from recreation.gov's published application history; the [methodology page](/methodology) explains how. Nothing here is official. If this page and recreation.gov disagree, recreation.gov is right.
+Rules and dates are from the Okanogan-Wenatchee National Forest's [Enchantments Overnight Permits](https://www.fs.usda.gov/r06/okanogan-wenatchee/recreation/enchantments-overnight-permits) and [Enchantments](https://www.fs.usda.gov/r06/okanogan-wenatchee/recreation/enchantments) pages and Recreation.gov's [advanced lottery](https://www.recreation.gov/permits/233273) and [daily lottery](https://www.recreation.gov/permits/445863) pages. Odds are this site's own estimates, built from Recreation.gov's published application history; the [methodology page](/methodology) explains how. Nothing here is official. If this page and Recreation.gov disagree, Recreation.gov is right.
 
 Last reviewed: October 2026.
