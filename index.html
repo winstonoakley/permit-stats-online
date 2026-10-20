@@ -2,7 +2,17 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Permit Statistics Table</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Enchantments Lottery Odds Calculator</title>
+  <meta name="description" content="Estimate your odds of winning an Enchantments overnight permit. Enter up to three choices and see predicted and historical odds for every zone and date." />
+  <link rel="canonical" href="https://permitodds.com/" />
+  <meta property="og:site_name" content="Permit Odds" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Enchantments Lottery Odds Calculator" />
+  <meta property="og:description" content="Estimate your odds of winning an Enchantments overnight permit. Enter up to three choices and see predicted and historical odds for every zone and date." />
+  <meta property="og:url" content="https://permitodds.com/" />
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/static/site.css" />
   <style>
     :root {
       --bg: #0f172a;          /* page background: dark slate */
@@ -675,8 +685,17 @@
 </head>
 <body>
   <div class="main-wrapper">
+    <header class="site-header">
+      <a class="site-brand" href="/">Permit Odds</a>
+      <nav class="site-nav" aria-label="Main">
+        <a href="/" aria-current="page">Calculator</a>
+        <a href="/zones">Zones</a>
+        <a href="/lottery">How the lottery works</a>
+        <a href="/faq">FAQ</a>
+      </nav>
+    </header>
     <div class="card">
-      <h1>Enchantments Lottery Statistics</h1>
+      <h1>Enchantments Lottery Odds</h1>
       <p class="subtitle">
         Enter up to <strong>three</strong> choices. Each choice has its own zone, date, and group size.
         Pressing "Fetch Results" will display the estimated odds of winning your selection, along with the historical odds of
@@ -828,6 +847,13 @@
         <!-- Historical table inserted here -->
       </div>
     </div> <!-- end .card -->
+    <footer class="site-footer">
+      <nav aria-label="Site">
+        <a href="/about">About</a><a href="/methodology">Methodology</a>
+        <a href="/privacy">Privacy</a><a href="/terms">Terms</a>
+      </nav>
+      <p>Not affiliated with the U.S. Forest Service or Recreation.gov. Odds are estimates, not guarantees.</p>
+    </footer>
   </div> <!-- end .main-wrapper -->
 
   <!-- Heatmap calendar dropdown -->
@@ -852,6 +878,7 @@
     </div>
   </div>
 
+  <script src="/static/analytics.js"></script>
   <script>
     const API_BASE_URL = '';
 
@@ -922,108 +949,8 @@
       return { P1: P1Hat, P2: P2Hat, P3: P3Hat, total, byChoice: [P1Hat, P2Hat, P3Hat] };
     }
 
-    // -------------------------
-    // Analytics identity
-    // -------------------------
-    // Two random ids live in localStorage: a visitor id (rotated after ~13
-    // months) and a visit id that starts over after 30 minutes without an
-    // event. seq_in_visit counts events within the visit. Nothing else about
-    // the browser is stored client-side; device and browser are parsed
-    // server-side from the User-Agent header.
-
-    const VISIT_GAP_MS = 30 * 60 * 1000;
-    const VISITOR_MAX_AGE_MS = 13 * 30 * 24 * 60 * 60 * 1000;
-    const memStore = {}; // fallback when localStorage is unavailable (private mode etc.)
-
-    function storeGet(key) {
-      try { return localStorage.getItem(key); } catch (e) { return memStore[key] || null; }
-    }
-    function storeSet(key, value) {
-      try { localStorage.setItem(key, value); } catch (e) { memStore[key] = value; }
-    }
-    function storeDel(key) {
-      try { localStorage.removeItem(key); } catch (e) { delete memStore[key]; }
-    }
-    function randomId() {
-      if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
-      return 'id-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
-    }
-    function readJson(key) {
-      try { return JSON.parse(storeGet(key) || 'null'); } catch (e) { return null; }
-    }
-
-    // Returns {visitor_id, visit_id, seq_in_visit, is_new_visitor} and
-    // advances the visit; call once per event.
-    function analyticsIds() {
-      const now = Date.now();
-      let visitor = readJson('psVisitor');
-      let isNew = false;
-      if (!visitor || !visitor.id || (now - (visitor.created || 0)) > VISITOR_MAX_AGE_MS) {
-        visitor = { id: randomId(), created: now };
-        storeSet('psVisitor', JSON.stringify(visitor));
-        isNew = true;
-      }
-      let visit = readJson('psVisit');
-      if (!visit || !visit.id || (now - (visit.last || 0)) > VISIT_GAP_MS) {
-        visit = { id: randomId(), last: now, seq: 0 };
-      }
-      visit.seq = (visit.seq || 0) + 1;
-      visit.last = now;
-      storeSet('psVisit', JSON.stringify(visit));
-      return { visitor_id: visitor.id, visit_id: visit.id, seq_in_visit: visit.seq, is_new_visitor: isNew };
-    }
-
-    // Retire the v1 keys (a lifetime session id and a lifetime query counter).
-    storeDel('sessionId');
-    storeDel('queryIndex');
-
-    // Fire-and-forget delivery to /log_event; must never throw or block.
-    function sendAnalytics(body) {
-      try {
-        const json = JSON.stringify(body);
-        if (navigator.sendBeacon) {
-          navigator.sendBeacon(API_BASE_URL + '/log_event', new Blob([json], { type: 'text/plain' }));
-        } else {
-          fetch(API_BASE_URL + '/log_event', {
-            method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: json, keepalive: true
-          }).catch(() => {});
-        }
-      } catch (e) { /* analytics must never break the page */ }
-    }
-
-    function reportError(endpoint, httpStatus, message) {
-      sendAnalytics(Object.assign({
-        event_type: 'error',
-        detail: { endpoint: endpoint, http_status: httpStatus, message: message }
-      }, analyticsIds()));
-    }
-
-    // One page_view per load, with the external referrer (query string
-    // dropped), any UTM tags, and the viewport width. Sent after the load
-    // event, when the browser is idle, so the beacon never competes with the
-    // page itself for bandwidth (it was costing up to ~150 ms of mobile LCP).
-    function whenIdleAfterLoad(fn) {
-      const run = () => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 2000 }) : setTimeout(fn, 0));
-      if (document.readyState === 'complete') run();
-      else window.addEventListener('load', run, { once: true });
-    }
-    whenIdleAfterLoad(function logPageView() {
-      let referrer = null;
-      try { referrer = document.referrer ? document.referrer.split(/[?#]/)[0] : null; } catch (e) {}
-      let params;
-      try { params = new URLSearchParams(window.location.search); } catch (e) { params = new URLSearchParams(); }
-      sendAnalytics(Object.assign({
-        event_type: 'page_view',
-        page: {
-          path: window.location.pathname,
-          referrer: referrer,
-          utm_source: params.get('utm_source'),
-          utm_medium: params.get('utm_medium'),
-          utm_campaign: params.get('utm_campaign'),
-          viewport_w: window.innerWidth || null
-        }
-      }, analyticsIds()));
-    });
+    // Analytics identity, sendAnalytics(), reportError() and the page_view
+    // beacon live in /static/analytics.js, shared with the content pages.
 
     // Convert "YYYY-MM-DD" (from the form) to "Mmm dd"
     function formatIsoDateToMmmDd(isoDate) {
@@ -1713,6 +1640,18 @@
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && !hmPopover.hidden) closeHeatmap();
     });
+
+    // Zone pages link here as /?zone=Core&size=4 to pre-fill Choice 1.
+    (function prefillFromQuery() {
+      let params;
+      try { params = new URLSearchParams(window.location.search); } catch (e) { return; }
+      const setIfOption = (id, value) => {
+        const el = document.getElementById(id);
+        if (value && el && Array.from(el.options).some(o => o.value === value)) el.value = value;
+      };
+      setIfOption('zone1', params.get('zone'));
+      setIfOption('group_size1', params.get('size'));
+    })();
   </script>
 </body>
 </html>

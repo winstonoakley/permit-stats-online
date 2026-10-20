@@ -706,3 +706,21 @@ in the report, analytics disabled, unwritable path. 43 passed, 1 skipped
 - A server-side 500 on `/heatmap_odds` or `/estimate_odds` is recorded
   twice: once by the server (no visitor) and once by the page's beacon.
   The error count in the report includes both.
+
+## 10. Content pages (2026-10-19, branch `site-content-pages`)
+
+The guide and zone pages (`/lottery`, `/faq`, `/zones/...` and the rest;
+`app/pages.py`) send the same `page_view` beacon as the calculator. The
+identity code and the beacon moved out of `index.html` into
+`static/analytics.js`, which every page loads, so a visit that moves
+between pages keeps one visitor id, one visit id and one `seq_in_visit`
+count. `page_path` tells the pages apart.
+
+One behaviour changed: a referrer on this site's own origin is now sent as
+null. Before, there was only one page, so every referrer was external.
+With several pages, a click from `/faq` to the calculator would report
+`permitodds.com` as a referrer, and because the report takes a visit's
+first non-null referrer, a direct visit that browsed two pages would have
+been counted as a permitodds.com referral. The arrival referrer is still on
+the visit's first `page_view`, and the route through the site is the
+sequence of `page_path` values.

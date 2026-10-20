@@ -2,13 +2,15 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, Response, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 import hmac
 import json
 import os
 import re
 import sqlite3
 import sys
+import threading
 import time
 from datetime import date
 from pathlib import Path
@@ -18,7 +20,8 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from . import analytics
-from .odds_engine import Choice, estimate_odds_for_choice_set, estimate_season_odds
+from . import pages
+from .odds_engine import ENGINE_LOCK, Choice, estimate_odds_for_choice_set, estimate_season_odds
 
 
 limiter = Limiter(key_func=get_remote_address)
@@ -154,9 +157,57 @@ async def _on_unhandled(request: Request, exc: Exception):
     return JSONResponse({"detail": "Internal Server Error"}, status_code=500)
 
 
-@app.get("/", response_class=HTMLResponse)
+@app.api_route("/", methods=["GET", "HEAD"], response_class=HTMLResponse)
 async def serve_index():
     return FileResponse(INDEX_PATH)
+
+
+# --- Content pages (app/pages.py renders content/*.md) ---
+
+app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
+
+_PAGE_HEADERS = {"Cache-Control": "public, max-age=600"}
+
+
+def _guide_route(slug: str):
+    def serve() -> HTMLResponse:
+        return HTMLResponse(pages.render_guide(slug), headers=_PAGE_HEADERS)
+    return serve
+
+
+def _zone_route(slug: str):
+    # Sync, so the first (uncached, ~2-3 s) render runs in the threadpool.
+    def serve(size: int = Query(pages.DEFAULT_GROUP_SIZE, ge=1, le=8)) -> HTMLResponse:
+        return HTMLResponse(pages.render_zone(slug, size), headers=_PAGE_HEADERS)
+    return serve
+
+
+for _slug, _ in pages.GUIDE_PAGES:
+    app.add_api_route(_slug, _guide_route(_slug), methods=["GET", "HEAD"], response_class=HTMLResponse)
+for _slug, _, _ in pages.ZONES:
+    app.add_api_route(_slug, _zone_route(_slug), methods=["GET", "HEAD"], response_class=HTMLResponse)
+
+threading.Thread(target=pages.warm_cache, name="warm-content-pages", daemon=True).start()
+
+
+@app.api_route("/zones", methods=["GET", "HEAD"], response_class=HTMLResponse)
+def zones_index():
+    return HTMLResponse(pages.render_zones_index(), headers=_PAGE_HEADERS)
+
+
+@app.api_route("/robots.txt", methods=["GET", "HEAD"], response_class=PlainTextResponse)
+def robots_txt():
+    return PlainTextResponse(pages.robots_txt())
+
+
+@app.api_route("/sitemap.xml", methods=["GET", "HEAD"])
+def sitemap_xml():
+    return Response(pages.sitemap_xml(), media_type="application/xml")
+
+
+@app.api_route("/favicon.ico", methods=["GET", "HEAD"])
+def favicon():
+    return FileResponse(BASE_DIR / "static" / "favicon.svg", media_type="image/svg+xml")
 
 # --- Models (shapes of data we send/receive) ---
 
@@ -348,12 +399,13 @@ def estimate_odds(payload: OddsRequest, request: Request):
 
     # ---- Run the odds engine (your existing logic) ----
     t0 = time.perf_counter()
-    result = estimate_odds_for_choice_set(
-        permit_year=payload.permit_year,
-        choices=choices,
-        data_years=payload.data_years,
-        db_dir=db_dir,
-    )
+    with ENGINE_LOCK:
+        result = estimate_odds_for_choice_set(
+            permit_year=payload.permit_year,
+            choices=choices,
+            data_years=payload.data_years,
+            db_dir=db_dir,
+        )
     server_ms = int((time.perf_counter() - t0) * 1000)
 
     # ---- Log this "Fetch Results" event (best-effort; log_event never raises) ----
@@ -396,13 +448,14 @@ def heatmap_odds(payload: HeatmapRequest, request: Request):
     db_dir = os.getenv("ODDS_DB_DIR") or os.path.join(str(BASE_DIR), "odds_databases")
 
     t0 = time.perf_counter()
-    result = estimate_season_odds(
-        zone=payload.zone,
-        group_size=payload.group_size,
-        permit_year=payload.permit_year,
-        data_years=payload.data_years,
-        db_dir=db_dir,
-    )
+    with ENGINE_LOCK:
+        result = estimate_season_odds(
+            zone=payload.zone,
+            group_size=payload.group_size,
+            permit_year=payload.permit_year,
+            data_years=payload.data_years,
+            db_dir=db_dir,
+        )
     server_ms = int((time.perf_counter() - t0) * 1000)
 
     if payload.log_event:

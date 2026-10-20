@@ -1,11 +1,16 @@
 import os
 import sqlite3
+import threading
 import datetime as dt
 from dataclasses import dataclass
 from typing import List, Dict, Any
 
 cur = None
 corezoneid = None
+# The functions below share `cur` and `corezoneid` above, so two lookups
+# running at once in different threads would read each other's database.
+# Callers hold ENGINE_LOCK around each top-level call.
+ENGINE_LOCK = threading.RLock()
 
 @dataclass
 class Choice:
