@@ -31,7 +31,7 @@ Because day hiking anywhere in the area needs only the free day-use permit, a Co
 
 ## Group size
 
-The maximum group size is eight in every zone. The Core Zone is the exception in practice: Core permits are issued for a specific number of people, and the Forest Service will not increase a Core group size after the fact unless quota happens to be free, which it says is unlikely. So for the Core, the number you apply for is the number you get. In the other zones, group size has little effect on your odds because the quota is counted differently.
+The maximum group size is eight in every zone. The Core Zone quota works differently than the other zones: Core permits are issued for a specific number of people. So for the Core, the number you apply for is the number you get. In the other zones, group size has no effect on your odds because the quota is counted differently.
 
 You cannot change your dates, zones, or group size after you submit. Pick carefully.
 
@@ -39,7 +39,7 @@ You cannot change your dates, zones, or group size after you submit. Pick carefu
 
 This is the part that matters for strategy.
 
-Each application lists a first choice and up to two alternates. Each choice is a zone, an entry date, a number of nights, and a group size. When the lottery runs, Recreation.gov puts every application in random order and goes through them one at a time. For each application it checks the first choice. If that zone still has room on that date for that group, the application wins it and the draw moves on. If not, it checks the second choice, then the third. If none of the three fit, the application loses.
+Each application lists a first choice and up to two alternates. Each choice is a zone, an entry date, and a group size. When the lottery runs, Recreation.gov puts every application in random order and goes through them one at a time. For each application it checks the first choice. If that zone still has availability on that date for that group, the application wins it and the draw moves on. If not, it checks the second choice, then the third. If none of the three choices have availability left, the application loses.
 
 Two consequences follow from that:
 
@@ -75,7 +75,7 @@ Most applicants do. There are three other routes in.
 - Maximum stay is 14 consecutive days, and you cannot leave and re-enter on the same permit.
 - No campfires above 5,000 feet or within half a mile of any lake, which in practice means no fires anywhere you would want one. Wood-burning stoves are not allowed above 5,000 feet either; gas stoves are fine.
 - No dogs or other pets anywhere in the permit area.
-- Use the toilets where they exist. Elsewhere, dig a cat hole at least 200 feet from water and camp, and pack out your toilet paper.
+- Use the toilets where they exist. Elsewhere, dig a hole at least 200 feet from water and camp.
 - Goats are habituated and will follow you. They are after salt, not food. Urinate on rocks well away from camp and plants, and never feed them.
 
 ## Where these facts come from
