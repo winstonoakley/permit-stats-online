@@ -14,8 +14,6 @@ The Core is the high basin of granite, larch, and turquoise lakes that the Encha
 
 It is also the hardest overnight permit in Washington. For a party of two, the median day of the season predicts about 3% odds, and a typical July or August day is under 2%. The Core is the one zone where group size changes your chances: quota is counted per person, so smaller parties do markedly better, and a solo applicant has about three and a half times the odds of a pair. If the Core is the goal, the practical strategies are a solo or two-person application, a Sunday-to-Thursday entry, a June or October date, and two alternates in Colchuck or Snow that let you day-hike the basin from below. A Core permit also lets you camp in any of the other four zones.
 
-Campfires are banned. Goats will follow you. Toilets exist at the larger lakes; use them.
-
 ---
 
 ## Colchuck Zone
