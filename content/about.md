@@ -4,15 +4,11 @@ This site estimates your odds of winning an overnight permit in the Enchantments
 
 ## What it does
 
-The calculator on the home page takes the same three choices you would enter on Recreation.gov and estimates the chance each one wins, plus your total chance of winning any of them. The estimates come from simulating the last five lotteries using the actual application data from those years. The [methodology page](/methodology) explains how, and the [zone pages](/zones) show odds for every date in the season.
+The calculator on the home page takes the same three choices you would enter on Recreation.gov and predicts the odds each one wins, plus your total chance of winning any of them. The estimates come from simulating the last five lotteries using the actual application data from those years. The [methodology page](/methodology) explains how, and the [zone pages](/zones) show odds for every date in the season.
 
 ## What it is not
 
-It is not affiliated with, endorsed by, or connected to the U.S. Forest Service, the Okanogan-Wenatchee National Forest, or Recreation.gov. It cannot apply for a permit for you or tell you whether you won. It certainly cannot guarantee that you'll win a permit. The numbers are estimates, and the [terms](/terms) say so at greater length.
-
-## The data
-
-Application and outcome data is published by Recreation.gov after each lottery. This site uses data from the last five lotteries. The simulation and the odds tables are rebuilt after each new lottery.
+This site is not affiliated with, endorsed by, or connected to the U.S. Forest Service, the Okanogan-Wenatchee National Forest, or Recreation.gov. It cannot apply for a permit for you or tell you whether you won. It certainly cannot guarantee that you'll win a permit. The numbers are estimates, and the [terms](/terms) say so at greater length.
 
 ## Contact
 
