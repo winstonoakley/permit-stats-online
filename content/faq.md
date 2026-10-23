@@ -1,10 +1,10 @@
 # Enchantments Lottery FAQ
 
-Answers use this site's own estimates for the 2027 season unless they say otherwise. Estimates were generated from the 2022–2026 lotteries. "Median" means the middle day of the May 15 – October 31 season: half the days are easier, half are harder.
+Answers use this site's own estimates for the 2027 season unless they say otherwise. Estimates were generated from the 2022–2026 lotteries.
 
 ## Which zone is easiest to win?
 
-Eightmile / Caroline, then Stuart, then Snow. Colchuck and the Core are in a different league.
+Eightmile / Caroline, then Stuart, then Snow. Colchuck and the Core are in a different league.The "median" odds shown below give you a sense of the relative chances of winning each zone. If you ranked all the days in the season from worst odds to best, the median is right in the middle; half the days are easier, half are harder.
 
 | Zone | Median first-choice odds |
 |---|---|
@@ -71,7 +71,7 @@ The pattern that does not work is three variations of a hard choice, such as thr
 
 ## Can I day-hike the Core on a Colchuck or Snow permit?
 
-Yes. Day hiking anywhere in the permit area needs only the free, self-issued day-use permit available at the trailheads. You must camp in the zone named on your overnight permit. A Core permit is the exception that goes the other way: it lets you camp in any of the five zones. Many people do the through-hike in a day from a Colchuck or Snow base camp.
+Yes. Day hiking anywhere in the permit area needs only the free, self-issued day-use permit available at the trailheads. You must camp in the zone named on your overnight permit. A Core permit is the exception that goes the other way: it lets you camp in any of the five zones.
 
 ## How much does it cost?
 
@@ -79,7 +79,7 @@ $6 to apply, non-refundable. If you win, $5 per person per day when you claim th
 
 ## When do I find out?
 
-Results are posted around mid-March. Log in to Recreation.gov to check rather than waiting for an email. You must claim and pay by the deadline or the permit goes back into the pool.
+Results are posted around mid-March. Log in to Recreation.gov to check or just wait for the email. You must claim and pay by the deadline or the permit goes back into the pool.
 
 ## What happens to unclaimed permits?
 
@@ -91,7 +91,7 @@ There is a daily lottery during the season for a share of each zone's quota. It 
 
 ## How accurate are these estimates?
 
-They are simulations built from real application data, not guesses, but they are still estimates. A 10% prediction means that in re-runs of recent lotteries, a choice like yours won about one time in ten. When the method was tested by predicting the 2025 and 2026 lotteries from the years before them, predictions were off by about 5 percentage points on average, and within each range of predictions (under 5%, 5–10%, and so on) the average prediction was within 2 points of how often those choices actually won. The main things that would make 2027 different are a change in quota, a change in how many people apply, or a change in the draw rules. The [methodology page](/methodology) explains the model and its limits.
+The historical results are based on simulations built from real application data, not guesses, but they are still estimates. A 10% prediction means that in re-runs of recent lotteries, a choice like yours won about one time in ten. When the method was tested by predicting the 2025 and 2026 lotteries from the years before them, predictions were off by about 5 percentage points on average, and within each range of predictions (under 5%, 5–10%, and so on) the average prediction was within 2 points of how often those choices actually won. The main things that would make 2027 different are a change in quota, a change in how many people apply, or a change in the draw rules. The [methodology page](/methodology) explains the model and its limits.
 
 ## Why does a date show "no data"?
 
