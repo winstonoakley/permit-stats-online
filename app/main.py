@@ -283,9 +283,12 @@ class ClientPage(BaseModel):
 class ClientEvent(VisitorMeta):
     """Body of POST /log_event. `timing` is not an event: it fills client_ms
     on an existing get_table row."""
-    event_type: Literal["page_view", "error", "ad_view", "timing"]
+    event_type: Literal["page_view", "error", "ad_view", "timing", "heatmap_view"]
     page: Optional[ClientPage] = None
     client_ms: Optional[int] = Field(None, ge=0, le=600_000)
+    # heatmap_view only: the engine time /heatmap_odds reported. The page
+    # preloads calendars with log_event false and logs the view when shown.
+    server_ms: Optional[int] = Field(None, ge=0, le=600_000)
     event_id: Optional[int] = Field(None, ge=1)
     detail: Optional[Dict[str, Any]] = None
 
@@ -476,6 +479,8 @@ def heatmap_odds(payload: HeatmapRequest, request: Request):
                 "from_choice": payload.from_choice,
             },
         )
+    # The page logs its own heatmap_view (see ClientEvent) and passes this on.
+    result["server_ms"] = server_ms
     return result
 
 
@@ -503,6 +508,7 @@ async def log_client_event(request: Request):
             analytics.set_client_ms(event.event_id, visitor["visitor_id"], event.client_ms)
         return Response(status_code=204)
 
+    is_heatmap = event.event_type == "heatmap_view"
     analytics.log_event(
         event.event_type,
         source="page",
@@ -511,6 +517,8 @@ async def log_client_event(request: Request):
         page=event.page.model_dump() if event.page else None,
         context=analytics.context_from_headers(request.headers),
         app_version=APP_VERSION,
+        sim_version=SIM_VERSION if is_heatmap else None,
+        server_ms=event.server_ms if is_heatmap else None,
         client_ms=event.client_ms,
         detail=event.detail,
     )

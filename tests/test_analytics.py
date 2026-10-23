@@ -378,6 +378,25 @@ def test_heatmap_view_logged(client, db_path):
         {"zone": "Snow", "group_size": 2, "permit_year": 2027, "month": 8, "from_choice": 2}
 
 
+def test_heatmap_preload_logs_view_from_page(client, db_path):
+    # the page preloads with log_event false, then logs the view when shown
+    body = {"zone": "Snow", "group_size": 1, "permit_year": 2027, "log_event": False}
+    r = client.post("/heatmap_odds", json=body)
+    assert r.status_code == 200
+    server_ms = r.json()["server_ms"]
+    assert isinstance(server_ms, int)
+    assert rows(db_path, "SELECT * FROM events WHERE event_type = 'heatmap_view'") == []
+
+    detail = {"zone": "Snow", "group_size": 3, "permit_year": 2027, "month": 7, "from_choice": 1}
+    r = client.post("/log_event", content=json.dumps(
+        {"event_type": "heatmap_view", "server_ms": server_ms, "detail": detail, **IDS}))
+    assert r.status_code == 204
+    e = one(db_path, "SELECT * FROM events WHERE event_type = 'heatmap_view'")
+    assert e["visitor_id"] == "v-1111" and e["source"] == "page"
+    assert e["server_ms"] == server_ms and e["sim_version"] == main.SIM_VERSION
+    assert json.loads(e["detail_json"]) == detail
+
+
 def test_error_events(client, db_path, monkeypatch):
     # client-side error report
     r = client.post("/log_event", content=json.dumps(

@@ -486,6 +486,36 @@
       padding: 18px 18px 16px 18px;
     }
 
+    .hm-body[hidden],
+    .hm-loading[hidden],
+    .hm-spinner[hidden] {
+      display: none;
+    }
+
+    .hm-loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      padding: 28px 24px 18px 24px;
+      font-size: 0.95rem;
+      color: var(--text-muted);
+      text-align: center;
+    }
+
+    .hm-spinner {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: 4px solid rgba(148, 163, 184, 0.25);
+      border-top-color: var(--accent-strong);
+      animation: hm-spin 0.8s linear infinite;
+    }
+
+    @keyframes hm-spin {
+      to { transform: rotate(360deg); }
+    }
+
     .hm-close {
       position: absolute;
       top: 10px;
@@ -859,6 +889,12 @@
   <!-- Heatmap calendar dropdown -->
   <div id="heatmap-popover" class="heatmap-popover" role="dialog" aria-labelledby="hm-month-label" hidden>
     <button type="button" class="hm-close" id="hm-close" aria-label="Close heatmap">✕</button>
+    <!-- Shown until the odds arrive; the calendar below stays hidden until then. -->
+    <div class="hm-loading" id="hm-loading" role="status">
+      <div class="hm-spinner" id="hm-spinner" aria-hidden="true"></div>
+      <div id="hm-loading-text">Please wait, the calendar is loading...</div>
+    </div>
+    <div class="hm-body" id="hm-body" hidden>
     <div class="hm-header">
       <button type="button" class="hm-nav" id="hm-prev" aria-label="Previous month">‹</button>
       <div class="hm-month-label" id="hm-month-label"></div>
@@ -876,6 +912,7 @@
       <span><span class="hm-chip hm-red"></span>&lt; 5%</span>
       <span><span class="hm-chip hm-nodata"></span>No data</span>
     </div>
+    </div> <!-- end .hm-body -->
   </div>
 
   <script src="/static/analytics.js"></script>
@@ -1355,8 +1392,16 @@
     const hmMonthLabel = document.getElementById('hm-month-label');
     const hmPrevBtn = document.getElementById('hm-prev');
     const hmNextBtn = document.getElementById('hm-next');
+    const hmBody = document.getElementById('hm-body');
+    const hmLoading = document.getElementById('hm-loading');
+    const hmSpinner = document.getElementById('hm-spinner');
+    const hmLoadingText = document.getElementById('hm-loading-text');
 
-    const heatmapCache = {}; // "zone|groupSize" -> {isoDate: predictedProb or null}
+    const HM_CORE_ZONE = 'Core';
+
+    const heatmapCache = {}; // hmCacheKey -> Promise of {odds: {isoDate: predictedProb or null}, serverMs}
+    const hmLoggedViews = new Set(); // "zone|groupSize" calendar views already logged this page load
+    const hmPreloadTimers = {}; // choice number -> pending preload timeout
     let hmChoiceNum = null;  // which choice's date field the heatmap fills
     let hmMonth = HM_MIN_MONTH; // month index currently displayed
     let hmOdds = null;       // first-choice predicted prob by ISO date for the open heatmap
@@ -1369,6 +1414,21 @@
       if (p >= 0.30) return 'hm-green';
       if (p >= 0.05) return 'hm-orange';
       return 'hm-red';
+    }
+
+    // Until the odds load, the popover shows only the spinner and a message;
+    // the month header, weekdays, grid and legend appear once loading is done.
+    // An error message replaces the loading text and stops the spinner.
+    function showHmLoading(errorMessage) {
+      hmBody.hidden = true;
+      hmLoading.hidden = false;
+      hmSpinner.hidden = Boolean(errorMessage);
+      hmLoadingText.textContent = errorMessage || 'Please wait, the calendar is loading...';
+    }
+
+    function showHmCalendar() {
+      hmLoading.hidden = true;
+      hmBody.hidden = false;
     }
 
     function renderHmHeader() {
@@ -1467,7 +1527,8 @@
         const zone = document.getElementById('zone' + n).value.trim();
         const gs = document.getElementById('group_size' + n).value;
         const iso = document.getElementById('date' + n).dataset.iso || '';
-        if (!zone || !gs || !iso) {
+        // Group size only matters for a Core choice; elsewhere any size will do.
+        if (!zone || (zone === HM_CORE_ZONE && !gs) || !iso) {
           return {
             factor: null,
             note: `Showing first-choice odds. Complete Choice ${n} to adjust for it.`
@@ -1478,7 +1539,7 @@
           zone: zone,
           month: parseInt(monthStr, 10),
           day: parseInt(dayStr, 10),
-          group_size: parseInt(gs, 10)
+          group_size: gs ? parseInt(gs, 10) : 1
         });
       }
 
@@ -1507,11 +1568,95 @@
         // Probability remaining after each higher choice, in priority order.
         let remaining = 1;
         for (const p of preds) remaining = clamp(remaining * (1 - p), 0, 1);
-        return { factor: remaining, note: `Adjusted for ${labels}` };
+        return { factor: remaining, note: `Odds have been adjusted for ${labels}` };
       } catch (err) {
         console.error(err);
         return { factor: null, note: `Showing first-choice odds (could not load ${labels}).` };
       }
+    }
+
+    // Group size only changes the odds in the Core (the engine ignores it for
+    // the other zones), so those zones share one cache entry across sizes.
+    function hmCacheKey(zone, groupSize) {
+      return zone === HM_CORE_ZONE ? zone.toLowerCase() + '|' + groupSize : zone.toLowerCase();
+    }
+
+    /**
+     * Start, or reuse, the /heatmap_odds request for a zone and group size.
+     * Rejects with an Error whose .status is the HTTP status (undefined when
+     * the request itself failed). A failed request leaves the cache so the
+     * next attempt retries.
+     */
+    function fetchHeatmapOdds(zone, groupSize) {
+      const key = hmCacheKey(zone, groupSize);
+      if (heatmapCache[key]) return heatmapCache[key];
+
+      const request = (async () => {
+        const response = await fetch(API_BASE_URL + '/heatmap_odds', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            zone: zone,
+            group_size: groupSize,
+            permit_year: PERMIT_YEAR,
+            data_years: [2022, 2023, 2024, 2025, 2026],
+            // Requests may be preloads; the page logs the calendar view
+            // itself when the calendar is shown (logHeatmapView).
+            log_event: false
+          })
+        });
+        if (!response.ok) {
+          const err = new Error('HTTP ' + response.status);
+          err.status = response.status;
+          throw err;
+        }
+        const data = await response.json();
+        // The server predicts each date with the same estimator as the
+        // main results (app/odds_engine.py); null means no data.
+        return { odds: data.predicted_by_date || {}, serverMs: data.server_ms };
+      })();
+      heatmapCache[key] = request;
+      request.catch(() => {
+        if (heatmapCache[key] === request) delete heatmapCache[key];
+      });
+      return request;
+    }
+
+    // Load a choice's calendar odds before the calendar is opened, as soon as
+    // the choice has what the odds depend on: zone and group size for the
+    // Core, just the zone elsewhere. Failures are silent here; opening the
+    // calendar retries and reports them.
+    function preloadHeatmap(choiceNum) {
+      clearTimeout(hmPreloadTimers[choiceNum]);
+      // A short delay so stepping through a dropdown with the arrow keys only
+      // fetches the value it lands on (/heatmap_odds is rate-limited).
+      hmPreloadTimers[choiceNum] = setTimeout(() => {
+        const zone = document.getElementById('zone' + choiceNum).value.trim();
+        const gsValue = document.getElementById('group_size' + choiceNum).value;
+        if (!zone || (zone === HM_CORE_ZONE && !gsValue)) return;
+        // Outside the Core any valid size gives the same odds.
+        fetchHeatmapOdds(zone, gsValue ? parseInt(gsValue, 10) : 1).catch(() => {});
+      }, 300);
+    }
+
+    // One heatmap_view per zone and group size per page load, matching what
+    // /heatmap_odds logged before preloading (cached reopens went unlogged).
+    function logHeatmapView(zone, groupSize, choiceNum, serverMs) {
+      const key = zone.toLowerCase() + '|' + groupSize;
+      if (hmLoggedViews.has(key)) return;
+      hmLoggedViews.add(key);
+      sendAnalytics(Object.assign({
+        event_type: 'heatmap_view',
+        server_ms: Number.isFinite(serverMs) ? serverMs : null,
+        // analytics: which calendar was opened and on which month
+        detail: {
+          zone: zone,
+          group_size: groupSize,
+          permit_year: PERMIT_YEAR,
+          month: hmMonth + 1,
+          from_choice: choiceNum
+        }
+      }, analyticsIds()));
     }
 
     async function openHeatmap(choiceNum, btn) {
@@ -1524,14 +1669,20 @@
       const zone = document.getElementById('zone' + choiceNum).value.trim();
       const gsValue = document.getElementById('group_size' + choiceNum).value;
 
+      // Group size is only needed for the Core; other zones' odds ignore it.
       errorDiv.textContent = '';
-      if (!zone || !gsValue) {
+      if (!zone) {
         closeHeatmap();
-        errorDiv.textContent =
-          `Select a zone and group size for Choice ${choiceNum} to view the odds heatmap.`;
+        errorDiv.textContent = `Select a zone for Choice ${choiceNum} to view the odds heatmap.`;
         return;
       }
-      const groupSize = parseInt(gsValue, 10);
+      if (zone === HM_CORE_ZONE && !gsValue) {
+        closeHeatmap();
+        errorDiv.textContent =
+          `Select a group size for Choice ${choiceNum} to view the Core odds heatmap.`;
+        return;
+      }
+      const groupSize = gsValue ? parseInt(gsValue, 10) : null; // null: not chosen (non-Core)
 
       hmChoiceNum = choiceNum;
       const requestId = ++hmRequestId;
@@ -1549,56 +1700,41 @@
       hmFactor = null;
       hmFactorNote = '';
       hmGrid.innerHTML = '';
-      renderHmHeader();
+      showHmLoading();
       positionHeatmap(btn);
 
-      hmStatus.textContent = 'Please wait...';
       const conditioning = await hmConditioning(choiceNum);
       if (requestId !== hmRequestId) return; // a newer heatmap was opened
       hmFactor = conditioning.factor;
       hmFactorNote = conditioning.note;
 
-      const cacheKey = zone.toLowerCase() + '|' + groupSize;
-      if (!heatmapCache[cacheKey]) {
-        try {
-          const response = await fetch(API_BASE_URL + '/heatmap_odds', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(Object.assign({
-              zone: zone,
-              group_size: groupSize,
-              permit_year: PERMIT_YEAR,
-              data_years: [2022, 2023, 2024, 2025, 2026],
-              // analytics: which calendar was opened and on which month
-              from_choice: choiceNum,
-              month: hmMonth + 1
-            }, analyticsIds()))
-          });
-          if (!response.ok) {
-            reportError('/heatmap_odds', response.status, 'http_error');
-            if (requestId === hmRequestId) {
-              hmStatus.textContent = 'Error from server: ' + response.status;
-            }
-            return;
+      // Usually already loaded or in flight from preloadHeatmap.
+      let result;
+      try {
+        // Outside the Core any valid size gives the same odds.
+        result = await fetchHeatmapOdds(zone, groupSize || 1);
+      } catch (err) {
+        if (err.status) {
+          reportError('/heatmap_odds', err.status, 'http_error');
+          if (requestId === hmRequestId) {
+            showHmLoading('Error from server: ' + err.status);
           }
-          const data = await response.json();
-          // The server predicts each date with the same estimator as the
-          // main results (app/odds_engine.py); null means no data.
-          heatmapCache[cacheKey] = data.predicted_by_date || {};
-        } catch (err) {
+        } else {
           console.error(err);
           reportError('/heatmap_odds', null, 'fetch_failed');
           if (requestId === hmRequestId) {
-            hmStatus.textContent = 'Something went wrong while loading odds.';
+            showHmLoading('Something went wrong while loading odds.');
           }
-          return;
         }
-        if (requestId !== hmRequestId) return; // a newer heatmap was opened
+        return;
       }
+      if (requestId !== hmRequestId) return; // a newer heatmap was opened
 
-      hmOdds = heatmapCache[cacheKey];
+      logHeatmapView(zone, groupSize, choiceNum, result.serverMs);
+      hmOdds = result.odds;
       hmStatus.textContent = hmFactorNote;
       renderHeatmapMonth();
+      showHmCalendar();
     }
 
     document.querySelectorAll('.heatmap-btn').forEach((btn) => {
@@ -1611,6 +1747,11 @@
       document.getElementById('date' + n).addEventListener('click', () => {
         openHeatmap(parseInt(n, 10), btn);
       });
+    });
+
+    ['1', '2', '3'].forEach((n) => {
+      document.getElementById('zone' + n).addEventListener('change', () => preloadHeatmap(n));
+      document.getElementById('group_size' + n).addEventListener('change', () => preloadHeatmap(n));
     });
 
     hmPrevBtn.addEventListener('click', () => {
@@ -1652,6 +1793,11 @@
       setIfOption('zone1', params.get('zone'));
       setIfOption('group_size1', params.get('size'));
     })();
+
+    // Preload calendars for choices already filled in when the page loads
+    // (the prefill above, or values the browser restored), which fire no
+    // change events.
+    ['1', '2', '3'].forEach(preloadHeatmap);
   </script>
 </body>
 </html>
