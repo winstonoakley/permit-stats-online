@@ -79,6 +79,17 @@ def test_zone_pages_show_their_map_below_the_title(client):
             assert client.get(url.group()).status_code == 200
 
 
+@pytest.mark.parametrize("slug", ["/", "/faq", "/zones", "/zones/snow"])
+def test_zones_menu_links_every_zone(client, slug):
+    page = client.get(slug).text
+    menu = re.search(r'<details class="nav-menu">.*?</details>', page, flags=re.S)
+    assert menu, slug
+    hrefs = re.findall(r'href="([^"]+)"', menu.group())
+    assert hrefs == ["/zones"] + [s for s, _, _ in pages.ZONES]
+    if slug.startswith("/zones"):
+        assert f'<a href="{slug}" aria-current="page">' in menu.group()
+
+
 def test_zone_page_has_calendar_and_month_table(client):
     page = client.get("/zones/snow").text
     # 170 season days, each a coloured tile with its odds.
@@ -133,8 +144,8 @@ def test_static_files(client):
 
 def test_calculator_links_shared_assets(client):
     page = client.get("/").text
-    assert '<script src="/static/analytics.js"></script>' in page
-    assert '<link rel="stylesheet" href="/static/site.css" />' in page
+    assert re.search(r'<script src="/static/analytics\.js\?v=\w+"></script>', page)
+    assert re.search(r'<link rel="stylesheet" href="/static/site\.css\?v=\w+" />', page)
     assert "<title>Enchantments Lottery Odds Calculator</title>" in page
     # The identity code moved to analytics.js; the page must not define it twice.
     assert "function analyticsIds" not in page

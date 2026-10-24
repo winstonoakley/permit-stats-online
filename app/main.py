@@ -13,6 +13,7 @@ import sys
 import threading
 import time
 from datetime import date
+from functools import lru_cache
 from pathlib import Path
 from pydantic import BaseModel, Field, ValidationError, field_validator
 from typing import Any, Dict, List, Literal, Optional
@@ -157,9 +158,23 @@ async def _on_unhandled(request: Request, exc: Exception):
     return JSONResponse({"detail": "Internal Server Error"}, status_code=500)
 
 
+@lru_cache(maxsize=None)
+def _index_html() -> str:
+    """index.html with the shared site header (and its zones menu) from
+    pages.site_header, and versioned links to the shared static files."""
+    page = INDEX_PATH.read_text(encoding="utf-8")
+    page, n = re.subn(r'<header class="site-header">.*?</header>',
+                      lambda m: pages.site_header("/"), page, count=1, flags=re.S)
+    if not n:
+        raise ValueError("index.html has no site-header to replace")
+    for name in ("site.css", "analytics.js"):
+        page = page.replace(f'"/static/{name}"', f'"{pages.static_url(name)}"')
+    return page
+
+
 @app.api_route("/", methods=["GET", "HEAD"], response_class=HTMLResponse)
 async def serve_index():
-    return FileResponse(INDEX_PATH)
+    return HTMLResponse(_index_html())
 
 
 # --- Content pages (app/pages.py renders content/*.md) ---

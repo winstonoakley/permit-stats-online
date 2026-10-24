@@ -139,10 +139,35 @@ def site_header(here: str = "") -> str:
         '<a class="site-brand" href="/">Permit Odds</a>'
         '<nav class="site-nav" aria-label="Main">'
         + link("/", "Calculator")
-        + link("/zones", "Zones")
+        + zones_menu(here)
         + link("/lottery", "How the lottery works")
         + link("/faq", "FAQ")
         + "</nav></header>"
+    )
+
+
+# Closes an open zones menu on a click outside it or on Escape.
+_MENU_SCRIPT = (
+    "<script>(function(){function close(e){document.querySelectorAll('details.nav-menu[open]')"
+    ".forEach(function(d){if(e.key==='Escape'||!d.contains(e.target))d.removeAttribute('open')})}"
+    "document.addEventListener('click',close);document.addEventListener('keydown',function(e)"
+    "{if(e.key==='Escape')close(e)})})()</script>"
+)
+
+
+def zones_menu(here: str) -> str:
+    """The Zones nav button: a dropdown of the zones index and each zone."""
+    items = [("/zones", "All zones")] + [(s, lbl) for s, _, lbl in ZONES]
+    mark = ' aria-current="page"'
+    links = "".join(
+        f'<li><a href="{href}"{mark if href == here else ""}>{esc(label)}</a></li>'
+        for href, label in items
+    )
+    return (
+        '<details class="nav-menu">'
+        f'<summary{mark if here.startswith("/zones") else ""}>Zones</summary>'
+        f'<ul class="nav-menu-list">{links}</ul>'
+        "</details>" + _MENU_SCRIPT
     )
 
 
