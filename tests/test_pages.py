@@ -33,7 +33,8 @@ def test_page_renders_with_meta_and_chrome(client, slug):
     assert f'<meta name="description" content="{pages.esc(meta["description"])}">' in page
     assert f'<link rel="canonical" href="https://permitodds.com{slug}">' in page
     assert 'class="site-header"' in page and 'class="site-footer"' in page
-    assert '<script src="/static/analytics.js" defer></script>' in page
+    assert re.search(r'<script src="/static/analytics\.js\?v=\w+" defer></script>', page)
+    assert re.search(r'<link rel="stylesheet" href="/static/site\.css\?v=\w+">', page)
 
 
 @pytest.mark.parametrize("slug", CONTENT_SLUGS)
@@ -73,8 +74,9 @@ def test_zone_pages_show_their_map_below_the_title(client):
         name = "all" if slug == "/zones" else slug.rsplit("/", 1)[-1]
         assert re.search(r'</h1>\s*<figure class="zone-map">', page), slug
         for src in (f"/static/maps/{name}.webp", f"/static/maps/{name}-900.webp"):
-            assert src in page
-            assert client.get(src).status_code == 200
+            url = re.search(re.escape(src) + r"\?v=\w+", page)
+            assert url, src
+            assert client.get(url.group()).status_code == 200
 
 
 def test_zone_page_has_calendar_and_month_table(client):

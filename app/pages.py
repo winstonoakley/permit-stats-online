@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import calendar
 import datetime as dt
+import hashlib
 import html
 import os
 import re
@@ -30,6 +31,7 @@ from .odds_engine import ENGINE_LOCK, estimate_season_odds
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 CONTENT_DIR = BASE_DIR / "content"
+STATIC_DIR = BASE_DIR / "static"
 
 # Canonical URLs, sitemap and Open Graph tags use this origin.
 SITE_URL = os.getenv("SITE_URL", "https://permitodds.com").rstrip("/")
@@ -157,6 +159,15 @@ def site_footer() -> str:
     )
 
 
+@lru_cache(maxsize=None)
+def static_url(name: str) -> str:
+    """/static/<name> with a version from the file's contents. Cloudflare
+    caches static files for hours, so a changed file needs a new URL or
+    pages get the old copy."""
+    digest = hashlib.md5((STATIC_DIR / name).read_bytes()).hexdigest()[:10]
+    return f"/static/{name}?v={digest}"
+
+
 def page_shell(slug: str, body: str) -> str:
     meta = seo_meta().get(slug)
     if meta is None:
@@ -177,8 +188,8 @@ def page_shell(slug: str, body: str) -> str:
         f'<meta property="og:description" content="{desc}">\n'
         f'<meta property="og:url" content="{esc(url)}">\n'
         '<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">\n'
-        '<link rel="stylesheet" href="/static/site.css">\n'
-        '<script src="/static/analytics.js" defer></script>\n'
+        f'<link rel="stylesheet" href="{static_url("site.css")}">\n'
+        f'<script src="{static_url("analytics.js")}" defer></script>\n'
         '</head>\n<body class="content-page">\n'
         '<div class="main-wrapper">\n'
         + site_header(slug)
@@ -274,7 +285,7 @@ def zone_map(slug: str, label: str) -> str:
 def _map_figure(name: str, alt: str, caption: str) -> str:
     """A map from static/maps/ (built by scripts/make_zone_maps.py), linked
     to its full size."""
-    full, small = f"/static/maps/{name}.webp", f"/static/maps/{name}-900.webp"
+    full, small = static_url(f"maps/{name}.webp"), static_url(f"maps/{name}-900.webp")
     return (
         '<figure class="zone-map">'
         f'<a href="{full}"><img src="{small}" srcset="{small} 900w, {full} 1638w" '
