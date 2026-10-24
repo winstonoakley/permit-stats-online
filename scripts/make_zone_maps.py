@@ -5,7 +5,8 @@ For each zone, the zone keeps its original colours and the rest of the map is
 washed out (desaturated and lightened, still readable). Each zone's outline is
 found by flood-filling from a point inside it, with the map's red boundary
 lines as walls. The main trails and their trailheads are drawn on top of
-every map. Writes static/maps/<zone>.webp and <zone>-900.webp.
+every map. Writes static/maps/<zone>.webp and <zone>-900.webp, plus
+all.webp and all-900.webp with every zone in colour for the /zones page.
 
 Run from the repo root after the source map changes:
     python scripts/make_zone_maps.py [path/to/map.png]
@@ -164,18 +165,26 @@ def main() -> None:
     walls, background = red_walls(img), washed(img)
     trails = trail_overlay(img.size)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    def save(name, mask):
+        out = Image.composite(img, background, mask)
+        out.paste(trails, (0, 0), trails)
+        out.save(OUT_DIR / f"{name}.webp", quality=80, method=6)
+        small = out.resize((SMALL_WIDTH, round(out.height * SMALL_WIDTH / out.width)), Image.LANCZOS)
+        small.save(OUT_DIR / f"{name}-{SMALL_WIDTH}.webp", quality=80, method=6)
+
+    masks = []
     for slug, seed in SEEDS.items():
         mask = zone_mask(walls, seed)
         coverage = (np.asarray(mask) > 127).mean()
         if not 0.02 < coverage < 0.25:
             raise SystemExit(f"{slug}: mask covers {coverage:.0%} of the map; check the seed point")
-        out = Image.composite(img, background, mask)
-        out.paste(trails, (0, 0), trails)
-        out.save(OUT_DIR / f"{slug}.webp", quality=80, method=6)
-        small = out.resize((SMALL_WIDTH, round(out.height * SMALL_WIDTH / out.width)), Image.LANCZOS)
-        small.save(OUT_DIR / f"{slug}-{SMALL_WIDTH}.webp", quality=80, method=6)
+        save(slug, mask)
+        masks.append(mask)
         print(f"{slug}: {coverage:.1%} of map")
-
+    # The /zones page: every zone in colour.
+    save("all", Image.fromarray(np.maximum.reduce([np.asarray(m) for m in masks])))
+    print("all: done")
 
 if __name__ == "__main__":
     main()

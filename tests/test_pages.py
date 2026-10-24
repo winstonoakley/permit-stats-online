@@ -68,9 +68,9 @@ def test_internal_links_resolve(client):
 
 
 def test_zone_pages_show_their_map_below_the_title(client):
-    for slug, _, _ in pages.ZONES:
+    for slug in ["/zones"] + [s for s, _, _ in pages.ZONES]:
         page = client.get(slug).text
-        name = slug.rsplit("/", 1)[-1]
+        name = "all" if slug == "/zones" else slug.rsplit("/", 1)[-1]
         assert re.search(r'</h1>\s*<figure class="zone-map">', page), slug
         for src in (f"/static/maps/{name}.webp", f"/static/maps/{name}-900.webp"):
             assert src in page

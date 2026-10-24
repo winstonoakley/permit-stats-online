@@ -262,18 +262,25 @@ def month_calendar(year: int, month: int, predicted: Dict[str, Optional[float]])
 
 
 def zone_map(slug: str, label: str) -> str:
-    """The permit-area map with this zone highlighted, from
-    static/maps/ (built by scripts/make_zone_maps.py). Links to the full size."""
-    name = slug.rsplit("/", 1)[-1]
+    """The permit-area map with this zone highlighted."""
+    return _map_figure(
+        slug.rsplit("/", 1)[-1],
+        f"Map of the Enchantment Permit Area zones with the {label} zone highlighted "
+        "and the main trails marked",
+        f"The {label} zone (in color) within the Enchantment Permit Area, with the main trails in yellow.",
+    )
+
+
+def _map_figure(name: str, alt: str, caption: str) -> str:
+    """A map from static/maps/ (built by scripts/make_zone_maps.py), linked
+    to its full size."""
     full, small = f"/static/maps/{name}.webp", f"/static/maps/{name}-900.webp"
     return (
         '<figure class="zone-map">'
         f'<a href="{full}"><img src="{small}" srcset="{small} 900w, {full} 1638w" '
         'sizes="(max-width: 940px) 100vw, 900px" width="1638" height="1062" '
-        f'alt="Map of the Enchantment Permit Area zones with the {esc(label)} zone highlighted '
-        'and the main trails marked"></a>'
-        f"<figcaption>The {esc(label)} zone (in color) within the Enchantment Permit Area, "
-        "with the main trails in yellow. "
+        f'alt="{esc(alt)}"></a>'
+        f"<figcaption>{esc(caption)} "
         "Select the map to enlarge it. Credit: USDA Forest Service</figcaption>"
         "</figure>"
     )
@@ -395,7 +402,12 @@ def render_zones_index() -> str:
         )
     body = (
         "<h1>Enchantments Permit Zones</h1>"
-        "<p>The Enchantment Permit Area is split into five zones, and an overnight permit is for one "
+        + _map_figure(
+            "all",
+            "Map of the five Enchantment Permit Area zones with the main trails marked",
+            "The five zones of the Enchantment Permit Area, with the main trails in yellow.",
+        )
+        + "<p>The Enchantment Permit Area is split into five zones, and an overnight permit is for one "
         "of them. Odds differ by more than ten times between the hardest and the easiest. Each zone "
         f"page has a calendar of predicted {PERMIT_YEAR} odds for every date of the season.</p>"
         f'<h2>Predicted {PERMIT_YEAR} first-choice odds</h2>'
