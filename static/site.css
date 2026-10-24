@@ -165,6 +165,20 @@ body {
   color: var(--accent);
 }
 
+.zone-map { margin: 0 0 18px 0; }
+.zone-map img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+}
+.zone-map figcaption {
+  margin-top: 6px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
 .zone-calendar {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));

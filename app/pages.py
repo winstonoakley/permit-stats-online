@@ -261,6 +261,24 @@ def month_calendar(year: int, month: int, predicted: Dict[str, Optional[float]])
     )
 
 
+def zone_map(slug: str, label: str) -> str:
+    """The permit-area map with this zone highlighted, from
+    static/maps/ (built by scripts/make_zone_maps.py). Links to the full size."""
+    name = slug.rsplit("/", 1)[-1]
+    full, small = f"/static/maps/{name}.webp", f"/static/maps/{name}-900.webp"
+    return (
+        '<figure class="zone-map">'
+        f'<a href="{full}"><img src="{small}" srcset="{small} 900w, {full} 1638w" '
+        'sizes="(max-width: 940px) 100vw, 900px" width="1638" height="1062" '
+        f'alt="Map of the Enchantment Permit Area zones with the {esc(label)} zone highlighted '
+        'and the main trails marked"></a>'
+        f"<figcaption>The {esc(label)} zone (in color) within the Enchantment Permit Area, "
+        "with the main trails in yellow. "
+        "Select the map to enlarge it. Credit: USDA Forest Service</figcaption>"
+        "</figure>"
+    )
+
+
 def zone_odds_section(slug: str, zone: str, label: str, group_size: int) -> str:
     season = zone_season(zone, group_size)
     predicted = season["predicted_by_date"]
@@ -353,7 +371,9 @@ def render_zone(slug: str, group_size: int = DEFAULT_GROUP_SIZE) -> str:
     group_size = min(max(group_size, 1), 8)
     section = _zone_sections()[slug]
     body = (
-        to_html(f"# {section['heading']}\n\n{section['body']}")
+        to_html(f"# {section['heading']}")
+        + "\n" + zone_map(slug, label)
+        + "\n" + to_html(section["body"])
         + "\n" + zone_odds_section(slug, zone, label, group_size)
     )
     return page_shell(slug, body)
